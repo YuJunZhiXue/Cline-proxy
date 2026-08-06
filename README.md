@@ -147,34 +147,29 @@ Model:    deepseek/deepseek-v4-flash
 
 ## CI/CD
 
-推送代码到 `main` 分支自动触发 GitHub Actions 工作流：
-
-1. 并行构建 6 个平台二进制（Windows/Linux/macOS × amd64/arm64）
-2. 自动创建 Release，标题格式为 `v年_月日_时分`（如 `v2026_0804_1415`）
-3. 所有二进制作为 Release Assets 上传
-
-工作流配置位于 [.github/workflows/build.yml](.github/workflows/build.yml)。
+Release 版本号以 `v` 开头，并按版本号递增，例如 `v1.0.0`。
 
 ## 项目结构
 
 ```
-├── main.go             入口，CLI 参数处理
-├── proxy.go            HTTP 服务，API 路由，协议转换，SSE 流式处理
-├── admin.go            管理后台 REST API
-├── admin_html.go       管理后台前端 HTML（嵌入 Go 二进制）
-├── auth.go             WorkOS OAuth 登录与 Token 刷新
-├── pool.go             账号池管理、持久化、策略轮询
-├── types.go            数据结构定义
-├── capture.go          OAuth 信息捕获工具
-├── http.go             HTTP 客户端与工具函数
-├── build.ps1           多平台交叉编译脚本
-├── rebuild.ps1         重建并重启脚本（开发热更新）
-├── Dockerfile          Docker 构建
-├── docker-compose.yml  Docker Compose 配置
-├── .github/workflows/build.yml  GitHub Actions 多平台构建
-└── override.md         可选的系统提示词覆盖文件
+├── main.go               入口与 CLI 参数处理
+├── proxy.go              HTTP 服务、API 路由与协议转换
+├── models.go             官方免费模型同步
+├── admin.go              管理后台 REST API
+├── admin_html.go         管理后台页面
+├── auth.go               WorkOS OAuth 登录与 Token 刷新
+├── pool.go               账号池管理与持久化
+├── types.go              数据结构定义
+├── capture.go            OAuth 信息捕获工具
+├── http.go               HTTP 客户端与工具函数
+├── Dockerfile            Docker 构建配置
+├── docker-compose.yml    Docker Compose 配置
+├── go.mod                Go 模块定义
+├── .cline-accounts.json  账号池数据
+├── override.md           可选的系统提示词覆盖文件
+└── README.md             项目说明
+```
 
 ---
 
 感谢 [LINUX DO](https://linux.do) 社区
-```
