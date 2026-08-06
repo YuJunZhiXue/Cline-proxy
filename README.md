@@ -13,17 +13,21 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 - **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`
 - **账号冷却与自动恢复**：命中 429 `INFERENCE_CAP_ERROR` 时自动解析 "Try again in 17h 59m" 并标记冷却，冷却到期自动恢复，账号列表显示预计恢复时间
 - **账号测试**：后台账号管理提供「⚡测试」按钮，对单个账号发起真实探测请求，验证是否可用；测试成功会清除冷却/过期状态（相当于升级版重置），失败会按上游返回的等待时长标记冷却
-- **今日/总次数统计**：账号列表显示「今日/总次数」，跨日自动重置今日计数；「↻重置」按钮仅重置今日次数，不影响总次数、状态和 Token
-- **多平台 CI/CD**：GitHub Actions 自动构建，推送代码到 main 即触发，生成 Windows (amd64/arm64)、Linux (amd64/arm64)、macOS (amd64/arm64) 共 6 个平台二进制，发布标题格式为 `v年_月日_时分`
+- **本地调用统计**：账号列表明确显示「本地今日/累计调用」，统计代理转发成功（上游 HTTP 200）的实际调用；跨日自动重置今日调用；「↻重置」按钮仅重置本地今日调用。该数字不是 Cline 官方免费额度，官方每日额度不公开精确次数。
+- **多平台 CI/CD**：GitHub Actions 自动构建，推送代码到 main 即触发，生成 Windows (amd64/arm64)、Linux (amd64/arm64)、macOS (amd64/arm64) 共 6 个平台二进制，版本从 `v0.0.1` 开始，之后每次自动递增补丁版本
 
 ## 快速开始
 
 ### 直接运行
 
 ```bash
-# 编译并启动（默认端口 3457）
+# 编译并启动（默认监听所有网卡，局域网可访问）
 go build -o cline-proxy.exe .
 ./cline-proxy.exe
+
+# 局域网访问地址：http://<本机局域网IP>:3457/admin/
+# 仅允许本机访问时：
+./cline-proxy.exe -host 127.0.0.1
 
 # 指定端口
 ./cline-proxy.exe -port 3457
@@ -32,7 +36,9 @@ go build -o cline-proxy.exe .
 go run . -start
 ```
 
-启动后访问 http://127.0.0.1:3457/admin/ 进入管理后台。
+启动后本机访问 http://127.0.0.1:3457/admin/；局域网设备访问 http://<本机局域网IP>:3457/admin/。
+
+监听所有网卡会开放管理后台给同网设备，建议仅在可信局域网使用，并在系统防火墙中限制 3457 端口。
 
 ### 构建脚本
 
@@ -81,7 +87,7 @@ docker compose down
 账号列表操作列说明：
 
 - **⚡ 测试**：对账号发起一次真实探测请求。成功则将账号置为活跃（清除冷却/过期状态，相当于升级版重置）；失败则按上游返回的等待时长标记冷却并显示预计恢复时间。
-- **↻ 重置**：仅重置该账号的「今日使用次数」，不影响总次数、状态和 Token。
+- **↻ 重置**：仅重置该账号的「今日调用」，不影响累计调用、状态和 Token。
 - **✕ 删除**：从账号池移除该账号。
 
 ### 2. 配置客户端
@@ -90,14 +96,14 @@ docker compose down
 
 **OpenAI 格式（/v1/chat/completions）：**
 ```
-Base URL: http://127.0.0.1:3457/v1
+Base URL: http://<本机局域网IP>:3457/v1
 API Key:  <在管理后台生成的 Key>
 Model:    deepseek/deepseek-v4-flash
 ```
 
 **Anthropic 格式（/v1/messages）：**
 ```
-Base URL: http://127.0.0.1:3457/v1
+Base URL: http://<本机局域网IP>:3457/v1
 API Key:  <在管理后台生成的 Key>
 Model:    deepseek/deepseek-v4-flash
 ```
@@ -147,7 +153,7 @@ Model:    deepseek/deepseek-v4-flash
 
 ## CI/CD
 
-Release 版本号以 `v` 开头，并按版本号递增，例如 `v1.0.0`。
+Release 版本号以 `v` 开头，从 `v0.0.1` 开始按语义版本递增：首次发布为 `v0.0.1`，后续推送自动发布 `v0.0.2`、`v0.0.3` 等版本。
 
 ## 项目结构
 

@@ -16,6 +16,8 @@ import (
 
 var defaultModel = "deepseek/deepseek-v4-flash"
 
+var proxyListenAddress = "0.0.0.0:3457"
+
 const (
 	defaultMaxTokens       = 128000
 	defaultReasoningEffort = "high"
@@ -41,7 +43,10 @@ type chatRequest struct {
 	Extra       map[string]any `json:"-"`
 }
 
-func startProxy(port int) error {
+func startProxy(host string, port int) error {
+	if strings.TrimSpace(host) == "" {
+		host = "0.0.0.0"
+	}
 	initLogFile()
 
 	p := loadPool()
@@ -255,7 +260,8 @@ func startProxy(port int) error {
 	mux.HandleFunc("/v1/messages", anthropicHandler)
 	mux.HandleFunc("/messages", anthropicHandler)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	addr := fmt.Sprintf("%s:%d", host, port)
+	proxyListenAddress = addr
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -439,13 +445,17 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, error) {
 			}
 			if resp.StatusCode == 401 {
 				resp.Body.Close()
+				poolMu.Lock()
 				acc.Status = "expired"
-				savePool()
+				savePoolLocked()
+				poolMu.Unlock()
 				return nil, fmt.Errorf("account %s token expired permanently", acc.Email)
 			}
 		} else {
+			poolMu.Lock()
 			acc.Status = "expired"
-			savePool()
+			savePoolLocked()
+			poolMu.Unlock()
 			return nil, fmt.Errorf("account %s refresh failed: %w", acc.Email, err)
 		}
 	}
@@ -467,7 +477,6 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, error) {
 	}
 
 	bumpUsage(acc)
-	savePool()
 	return resp, nil
 }
 

@@ -11,9 +11,10 @@ import (
 )
 
 var (
-	pool      *AccountPool
-	poolMu    sync.Mutex
-	poolPath  string
+	pool       *AccountPool
+	poolMu     sync.Mutex
+	poolSaveMu sync.Mutex
+	poolPath   string
 )
 
 func init() {
@@ -93,6 +94,16 @@ func setDefaultModel(modelID string) {
 }
 
 func savePool() {
+	poolMu.Lock()
+	defer poolMu.Unlock()
+	savePoolLocked()
+}
+
+// savePoolLocked 持久化账号池；调用方必须已经持有 poolMu。
+func savePoolLocked() {
+	poolSaveMu.Lock()
+	defer poolSaveMu.Unlock()
+
 	data, _ := json.MarshalIndent(pool, "", "  ")
 	if err := os.WriteFile(poolPath, data, 0600); err != nil {
 		log.Printf("Failed to save accounts: %v", err)
@@ -110,15 +121,16 @@ func addAccount(acc *Account) {
 func removeAccount(accountID string) bool {
 	p := loadPool()
 	poolMu.Lock()
-	defer poolMu.Unlock()
 
 	for i, a := range p.Accounts {
 		if a.AccountID == accountID {
 			p.Accounts = append(p.Accounts[:i], p.Accounts[i+1:]...)
-			savePool()
+			savePoolLocked()
+			poolMu.Unlock()
 			return true
 		}
 	}
+	poolMu.Unlock()
 	return false
 }
 
@@ -138,25 +150,28 @@ func getAccountByID(accountID string) *Account {
 func refreshAccountToken(acc *Account) error {
 	resp, err := refreshClineToken(acc.RefreshToken)
 	if err != nil {
+		poolMu.Lock()
 		acc.Status = "expired"
-		savePool()
+		savePoolLocked()
+		poolMu.Unlock()
 		return fmt.Errorf("token refresh failed: %w", err)
 	}
 
+	poolMu.Lock()
 	acc.AccessToken = "workos:" + resp.Data.AccessToken
 	if resp.Data.RefreshToken != "" {
 		acc.RefreshToken = resp.Data.RefreshToken
 	}
 	acc.ExpiresAt = parseExpiry(resp.Data.ExpiresAt) - 60000
 	acc.Status = "active"
-	savePool()
+	savePoolLocked()
+	poolMu.Unlock()
 	return nil
 }
 
 func pickAccount() *Account {
 	p := loadPool()
 	poolMu.Lock()
-	defer poolMu.Unlock()
 
 	active := make([]*Account, 0)
 	for _, a := range p.Accounts {
@@ -172,6 +187,7 @@ func pickAccount() *Account {
 	}
 
 	if len(active) == 0 {
+		poolMu.Unlock()
 		return nil
 	}
 
@@ -194,7 +210,8 @@ func pickAccount() *Account {
 		p.CurrentIdx = (p.CurrentIdx + 1) % len(active)
 	}
 
-	savePool()
+	savePoolLocked()
+	poolMu.Unlock()
 	return acc
 }
 
@@ -213,18 +230,20 @@ func ensureAccountToken(acc *Account) (string, error) {
 func listAccounts() []*Account {
 	p := loadPool()
 	poolMu.Lock()
-	defer poolMu.Unlock()
 
 	// 自动解除已到期的冷却，确保返回的列表是最新状态
+	usageDate := time.Now().Format("2006-01-02")
 	for _, a := range p.Accounts {
 		if a.Status == "cooldown" && !a.CooldownUntil.IsZero() && time.Now().After(a.CooldownUntil) {
 			a.Status = "active"
 			a.CooldownUntil = time.Time{}
 			a.LastReason = ""
 		}
+		if a.UsageDate != usageDate {
+			a.UsageDate = usageDate
+			a.UsageCountToday = 0
+		}
 	}
-	savePool()
-
 	result := make([]*Account, len(p.Accounts))
 	for i, a := range p.Accounts {
 		// Don't expose tokens
@@ -241,6 +260,8 @@ func listAccounts() []*Account {
 			LastReason:     a.LastReason,
 		}
 	}
+	savePoolLocked()
+	poolMu.Unlock()
 	return result
 }
 
@@ -253,35 +274,45 @@ func markAccountCooldown(acc *Account, reason string, duration time.Duration) {
 	if duration <= 0 {
 		duration = 18 * time.Hour // 默认 18 小时（Cline 免费额度每日重置）
 	}
+	poolMu.Lock()
 	acc.Status = "cooldown"
 	acc.CooldownUntil = time.Now().Add(duration)
 	acc.LastReason = reason
-	savePool()
+	savePoolLocked()
+	poolMu.Unlock()
 }
 
-// bumpUsage 递增账号使用计数（含今日计数），自动处理跨日重置。
+// bumpUsage 递增本地成功调用计数（含今日计数），自动处理跨日重置。
 func bumpUsage(acc *Account) {
 	if acc == nil {
 		return
 	}
-	today := time.Now().Format("2006-01-02")
+
+	poolMu.Lock()
+	now := time.Now()
+	today := now.Format("2006-01-02")
 	if acc.UsageDate != today {
 		acc.UsageDate = today
 		acc.UsageCountToday = 0
 	}
 	acc.UsageCountToday++
 	acc.UsageCount++
-	acc.LastUsed = time.Now()
+	acc.LastUsed = now
+	savePoolLocked()
+	poolMu.Unlock()
 }
 
-// resetTodayUsage 仅重置今日使用计数，不影响总次数。
+// resetTodayUsage 仅重置本地今日调用计数，不影响累计调用次数。
 func resetTodayUsage(acc *Account) {
 	if acc == nil {
 		return
 	}
+
+	poolMu.Lock()
 	acc.UsageDate = time.Now().Format("2006-01-02")
 	acc.UsageCountToday = 0
-	savePool()
+	savePoolLocked()
+	poolMu.Unlock()
 }
 
 // describePoolStatus 汇总当前账号池状态，用于错误诊断。
@@ -322,7 +353,7 @@ func describePoolStatus() string {
 }
 
 func addAccountFromDeviceAuth() (*Account, error) {
-	fmt.Println("\n=== Add New Cline Account (OAuth) ===\n")
+	fmt.Println("\n=== Add New Cline Account (OAuth) ===")
 
 	device, err := workosDeviceAuth()
 	if err != nil {
@@ -337,7 +368,7 @@ func addAccountFromDeviceAuth() (*Account, error) {
 	fmt.Println("  1. Open this URL in your browser:")
 	fmt.Println("     " + authURL)
 	fmt.Println("  2. Enter code: " + device.UserCode)
-	fmt.Println("  3. Log in with Google, GitHub, or email\n")
+	fmt.Println("  3. Log in with Google, GitHub, or email")
 
 	_ = openBrowser(authURL)
 	fmt.Println("  Waiting for authorization...")

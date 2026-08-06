@@ -141,11 +141,14 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
     <button class="btn btn-sm" onclick="loadAccounts()">🔄 刷新</button>
   </div>
 </div>
+<div style="margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text2);font-size:12px">
+  ℹ️ 次数为<strong style="color:var(--text)">本代理本地统计</strong>：记录该账号成功转发到 Cline 上游的调用次数，不是 Cline 官方免费额度；官方额度以 Cline 上游返回的限制和恢复时间为准。
+</div>
 <div class="section">
   <div class="section-body" style="padding:0">
     <table>
       <thead>
-        <tr><th>邮箱</th><th>状态</th><th>今日/总次数</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
+        <tr><th>邮箱</th><th>状态</th><th title="本代理本地统计，不代表官方免费额度">本地今日/累计调用</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
       </thead>
       <tbody id="accountTableBody">
         <tr><td colspan="6" class="empty">加载中...</td></tr>
@@ -338,6 +341,7 @@ applyTheme(getTheme());
 
 const _ = id => document.getElementById(id);
 const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
+if (window.location.host) _('footerApiAddr').textContent = 'http://' + window.location.host;
 
 function toast(msg, t, duration) {
   const el = _('toast');
@@ -430,12 +434,12 @@ async function loadAccounts() {
       return '<tr>' +
         '<td>' + esc(a.email) + '</td>' +
         '<td><span class="status ' + a.status + '"><span class="status-dot ' + a.status + '"></span>' + (sn[a.status] || a.status) + '</span>' + statusExtra + '</td>' +
-        '<td>' + (a.usageCountToday || 0) + ' / ' + (a.usageCount || 0) + '</td>' +
+          '<td title="本代理本地成功转发次数，不代表官方免费额度">' + (a.usageCountToday || 0) + ' / ' + (a.usageCount || 0) + '</td>' +
         '<td class="mono" style="font-size:11px">' + lu + '</td>' +
         '<td class="mono" style="font-size:11px">' + cr + '</td>' +
         '<td style="white-space:nowrap">' +
           '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\', this)" title="测试账号是否可用（成功会清除冷却/过期状态）">⚡</button> ' +
-          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置今日次数">↻</button> ' +
+          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置本地今日统计">↻</button> ' +
           '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
         '</td></tr>';
     }).join('');
@@ -477,10 +481,10 @@ async function deleteAccount(id) {
 }
 
 async function resetAccount(id) {
-  if (!confirm('确定重置此账号的今日使用次数？不影响总次数、状态和 Token。')) return;
+  if (!confirm('确定重置此账号的本地今日调用统计？不影响累计调用、状态和 Token。')) return;
   try {
     const d = await api('POST', '/accounts/reset', { accountId: id });
-    toast(d.message || '今日次数已重置', 'success');
+    toast(d.message || '本地今日调用统计已重置', 'success');
     loadAccounts(); loadStats();
   } catch (e) { toast('重置失败: ' + e.message, 'error'); }
 }

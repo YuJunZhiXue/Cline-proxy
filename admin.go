@@ -477,12 +477,13 @@ func handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) {
 	}
 	p := loadPool()
 	poolMu.Lock()
-	for _, a := range p.Accounts {
+	accounts := append([]*Account(nil), p.Accounts...)
+	poolMu.Unlock()
+	for _, a := range accounts {
 		if err := refreshAccountToken(a); err != nil {
 			log.Printf("Refresh failed for %s: %v", a.Email, err)
 		}
 	}
-	poolMu.Unlock()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "All tokens refreshed"})
 }
 
@@ -528,7 +529,7 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resetTodayUsage(acc)
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "今日次数已重置"})
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "本地今日调用统计已重置"})
 }
 
 // POST /admin/api/accounts/test  body: { accountId }
@@ -587,10 +588,12 @@ func testAccount(acc *Account) (map[string]any, string) {
 	// 取 token（expired/cooldown 也尝试刷新，测试按钮不因状态直接拒绝）
 	token, err := ensureAccountToken(acc)
 	if err != nil {
+		poolMu.Lock()
 		acc.LastReason = "token refresh failed: " + err.Error()
 		acc.Status = "expired"
 		acc.CooldownUntil = time.Time{}
-		savePool()
+		savePoolLocked()
+		poolMu.Unlock()
 		return map[string]any{
 			"accountId":  acc.AccountID,
 			"email":      acc.Email,
@@ -600,15 +603,21 @@ func testAccount(acc *Account) (map[string]any, string) {
 		}, "expired"
 	}
 
-	// 构造极小探测请求：max_tokens=1, 单条用户消息
+	// 构造极小探测请求：max_tokens=1, 单条用户消息。探测请求需与正常代理请求
+	// 使用相同的模型选择、流式策略和任务 ID，否则部分模型会返回空响应。
+	probeModel := getDefaultModel()
+	sessionID := fmt.Sprintf("test_%d", time.Now().UnixMilli())
 	probeBody := map[string]any{
-		"model":             defaultModel,
-		"max_tokens":        1,
-		"session_id":        fmt.Sprintf("test_%d", time.Now().UnixMilli()),
+		"model":            probeModel,
+		"max_tokens":       1,
+		"session_id":       sessionID,
 		"reasoning_effort": defaultReasoningEffort,
 		"messages": []map[string]any{
 			{"role": "user", "content": "ping"},
 		},
+	}
+	if modelNeedsStream(probeModel) {
+		probeBody["stream"] = true
 	}
 	bodyJSON, _ := json.Marshal(probeBody)
 
@@ -621,7 +630,7 @@ func testAccount(acc *Account) (map[string]any, string) {
 			"reason":    "build request: " + err.Error(),
 		}, "error"
 	}
-	req.Header = clineHeaders(token, "")
+	req.Header = clineHeaders(token, sessionID)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -661,10 +670,12 @@ func testAccount(acc *Account) (map[string]any, string) {
 	}
 
 	if resp.StatusCode == 401 {
+		poolMu.Lock()
 		acc.Status = "expired"
 		acc.LastReason = "401 unauthorized"
 		acc.CooldownUntil = time.Time{}
-		savePool()
+		savePoolLocked()
+		poolMu.Unlock()
 		return map[string]any{
 			"accountId":  acc.AccountID,
 			"email":      acc.Email,
@@ -686,11 +697,12 @@ func testAccount(acc *Account) (map[string]any, string) {
 	}
 
 	// 成功：清除所有异常状态（冷却/过期/原因），并递增使用计数
+	poolMu.Lock()
 	acc.Status = "active"
 	acc.LastReason = ""
 	acc.CooldownUntil = time.Time{}
+	poolMu.Unlock()
 	bumpUsage(acc)
-	savePool()
 	return map[string]any{
 		"accountId":  acc.AccountID,
 		"email":      acc.Email,
@@ -827,8 +839,12 @@ func handleAdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 // GET /admin/api/config
 func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := getProxyConfig()
+	address := r.Host
+	if address == "" {
+		address = proxyListenAddress
+	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
-		"address":      "127.0.0.1:3457",
+		"address":      address,
 		"strategy":     cfg.Strategy,
 		"version":      "go-1.1",
 		"poolPath":     poolPath,

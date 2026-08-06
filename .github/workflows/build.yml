@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -47,6 +51,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -71,18 +77,32 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           pattern: cline-proxy-*
 
-      - name: Generate release tag
+      - name: Generate semantic release tag
         id: tag
         run: |
-          TAG="v$(date +%Y_%m%d_%H%M)"
+          set -euo pipefail
+          git fetch --tags --force
+          LATEST=$(git tag --list 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+          if [ -z "$LATEST" ]; then
+            TAG="v0.0.1"
+          else
+            VERSION="${LATEST#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Generated tag: $TAG"
+          echo "Generated semantic version: $TAG"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

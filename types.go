@@ -10,9 +10,9 @@ type Account struct {
 	ExpiresAt     int64     `json:"-"`
 	Status        string    `json:"status"` // active, cooldown, expired
 	LastUsed      time.Time `json:"lastUsed"`
-	UsageCount    int64     `json:"usageCount"`
-	UsageCountToday int64   `json:"usageCountToday"`       // 今日使用次数
-	UsageDate     string    `json:"usageDate"`             // 计数日期 YYYY-MM-DD，跨日自动重置
+	UsageCount    int64     `json:"usageCount"`             // 本地累计成功调用次数
+	UsageCountToday int64   `json:"usageCountToday"`       // 本地今日成功调用次数
+	UsageDate     string    `json:"usageDate"`             // 本地计数日期 YYYY-MM-DD，跨日自动重置
 	CreatedAt     time.Time `json:"createdAt"`
 	CooldownUntil time.Time `json:"cooldownUntil,omitempty"` // 预计冷却结束时间
 	LastReason    string    `json:"lastReason,omitempty"`    // 最后一次进入冷却/失效的原因
