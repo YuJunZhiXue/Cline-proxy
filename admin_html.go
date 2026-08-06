@@ -236,8 +236,12 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 </div>
 
 <div class="section">
-  <div class="section-title">🧠 可用模型</div>
+  <div class="section-title">🧠 可用模型 <span id="modelsProbeInfo" style="font-size:12px;font-weight:normal;color:var(--text2)"></span></div>
   <div class="section-body">
+    <div style="margin-bottom:10px">
+      <button class="btn btn-sm btn-primary" onclick="refreshModels()">🔄 刷新模型</button>
+      <span style="font-size:12px;color:var(--text2)">自动同步上游官方免费模型（60 秒），仅显示不消耗额度的模型</span>
+    </div>
     <div id="modelsList">加载中...</div>
   </div>
 </div>
@@ -247,7 +251,13 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
   <div class="section-body">
     <div class="form-row">
       <div class="field"><label>监听地址</label><input type="text" id="settingAddr" disabled></div>
-      <div class="field"><label>默认模型</label><input type="text" id="settingDefModel" disabled></div>
+      <div class="field">
+        <label>默认模型</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="settingDefModel" style="flex:1;font-family:monospace"></select>
+          <button class="btn btn-sm btn-primary" onclick="saveDefaultModel()">💾 保存</button>
+        </div>
+      </div>
     </div>
     <div class="form-row">
       <div class="field">
@@ -687,15 +697,71 @@ async function saveHeaders() {
   } catch (e) { toast('保存失败: ' + e.message, 'error'); }
 }
 
-// ========== 模型列表 ==========
+const MODEL_STYLE = {
+  active:  { label: '可用', css: 'color:var(--green);border:1px solid var(--green)' },
+  empty:   { label: '响应为空', css: 'color:var(--yellow);border:1px solid var(--yellow)' },
+  pass:    { label: '需订阅', css: 'color:var(--yellow);border:1px solid var(--yellow)' },
+  removed: { label: '已下架', css: 'color:var(--text2);border:1px solid var(--text2)' },
+  error:   { label: '异常', css: 'color:var(--red);border:1px solid var(--red)' },
+  unknown: { label: '未探测', css: 'color:var(--text2);border:1px dashed var(--text2)' }
+};
+const COST_LABEL = { free: '免费', pass: '订阅', quota: '消耗额度' };
+
 async function loadModels() {
   try {
     const d = await api('GET', '/models');
     const models = d.data.models || [];
-    _('modelsList').innerHTML = models.map(m =>
-      '<span class="model-tag ' + (m.cost || 'free') + '">' + esc(m.id) + '</span>'
-    ).join('') || '<div class="empty">暂无模型</div>';
+    let info = '';
+    if (d.data.lastSync) info += '· 官方清单: ' + new Date(d.data.lastSync).toLocaleTimeString('zh-CN');
+    _('modelsProbeInfo').textContent = info;
+    if (!models.length) { _('modelsList').innerHTML = '<div class="empty">暂无模型</div>'; return; }
+    _('modelsList').innerHTML = models.map(m => {
+      const st = MODEL_STYLE[m.status] || MODEL_STYLE.unknown;
+      const cost = COST_LABEL[m.cost] || m.cost || '';
+      const synced = m.syncedAt ? new Date(m.syncedAt).toLocaleTimeString('zh-CN') : '-';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin:4px 0;background:var(--bg3);border-radius:6px">' +
+        '<span style="font-family:monospace;font-size:13px;flex:1">' + esc(m.id) + '</span>' +
+        (m.cost === 'free' ? '<span style="font-size:11px;color:var(--green)">不扣费</span>' : '') +
+        (cost ? '<span class="model-tag">' + esc(cost) + '</span>' : '') +
+        '<span class="model-tag" style="' + st.css + '">' + st.label + '</span>' +
+        '<span style="font-size:11px;color:var(--text2);min-width:60px;text-align:right">' + synced + '</span>' +
+        '</div>';
+    }).join('');
   } catch (e) { _('modelsList').textContent = '加载失败'; }
+}
+
+async function refreshModels() {
+  try {
+    _('modelsProbeInfo').textContent = '· 同步中...';
+    const d = await api('POST', '/models/refresh');
+    toast(d.data.message || '同步已开始', 'info');
+    setTimeout(loadModels, 3000);
+  } catch (e) { toast('刷新失败: ' + e.message, 'error'); _('modelsProbeInfo').textContent = ''; }
+}
+
+async function loadModelOptions() {
+  try {
+    const d = await api('GET', '/models');
+    const models = d.data.models || [];
+    const sel = _('settingDefModel');
+    if (!sel) return;
+    sel.innerHTML = models.map(m => {
+      const st = MODEL_STYLE[m.status] || MODEL_STYLE.unknown;
+      return '<option value="' + esc(m.id) + '">' + esc(m.id) + ' (' + st.label + ')</option>';
+    }).join('');
+    const c = await api('GET', '/config');
+    if (c.data.defaultModel) sel.value = c.data.defaultModel;
+    if (!sel.value && models.length) sel.value = models[0].id;
+  } catch (e) { /* ignore */ }
+}
+
+async function saveDefaultModel() {
+  const v = _('settingDefModel').value;
+  if (!v) { toast('请选择模型', 'error'); return; }
+  try {
+    const d = await api('POST', '/config/update', { defaultModel: v });
+    toast('默认模型已保存: ' + d.data.defaultModel, 'success');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
 }
 
 // ========== 配置加载 ==========
@@ -707,7 +773,7 @@ async function loadConfig() {
     if (c.strategy) _('settingStrategy').value = c.strategy;
     if (c.version) _('settingVersion').value = c.version;
     if (c.poolPath) _('settingPoolPath').value = c.poolPath;
-    if (c.defaultModel) _('settingDefModel').value = c.defaultModel;
+    loadModelOptions();
     if (c.headers) {
       const tbody = _('headersTableBody');
       tbody.innerHTML = Object.entries(c.headers).map(([k, v]) =>

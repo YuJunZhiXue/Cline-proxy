@@ -19,9 +19,10 @@ type Account struct {
 }
 
 type AccountPool struct {
-	Accounts   []*Account `json:"accounts"`
-	CurrentIdx int        `json:"currentIdx"`
-	Keys       []string   `json:"keys,omitempty"`
+	Accounts      []*Account `json:"accounts"`
+	CurrentIdx    int        `json:"currentIdx"`
+	Keys          []string   `json:"keys,omitempty"`
+	DefaultModel  string     `json:"defaultModel,omitempty"` // 用户自定义默认模型，持久化
 }
 
 type LoginMethod int

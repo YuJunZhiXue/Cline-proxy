@@ -14,9 +14,10 @@ import (
 	"time"
 )
 
+var defaultModel = "deepseek/deepseek-v4-flash"
+
 const (
-	defaultModel          = "cline-free/glm-5.2"
-	defaultMaxTokens      = 128000
+	defaultMaxTokens       = 128000
 	defaultReasoningEffort = "high"
 )
 
@@ -41,6 +42,8 @@ type chatRequest struct {
 }
 
 func startProxy(port int) error {
+	initLogFile()
+
 	p := loadPool()
 	activeCount := 0
 	for _, a := range p.Accounts {
@@ -59,7 +62,17 @@ func startProxy(port int) error {
 
 	freePort(port)
 
+	startModelsRefresher()
+
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/admin/", http.StatusFound)
+	})
 
 	mux.HandleFunc("/v1/health", corsHandler(func(w http.ResponseWriter, r *http.Request) {
 		info := map[string]any{
@@ -117,15 +130,9 @@ func startProxy(port int) error {
 		})
 	}
 
-	modelsList := []map[string]any{
-		{"id": "cline-free/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/qwen3.7-max", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-	}
-
 	modelsHandler := apiKeyHandler(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": modelsList})
+		ensureModelsFresh()
+		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": apiModelList()})
 	})
 	mux.HandleFunc("/v1/models", modelsHandler)
 	mux.HandleFunc("/models", modelsHandler)
@@ -190,7 +197,19 @@ func startProxy(port int) error {
 			}
 		}
 
-		resp, err := callClineAPI(params, isStream)
+		upstreamStream := isStream
+		if !isStream {
+			model := getDefaultModel()
+			if m, ok := params["model"].(string); ok && m != "" {
+				model = normalizeRequestModel(m)
+			}
+			if modelNeedsStream(model) {
+				upstreamStream = true
+				log.Printf("  model %s requires stream: forcing upstream stream, will aggregate", model)
+			}
+		}
+
+		resp, err := callClineAPI(params, upstreamStream)
 		if err != nil {
 			log.Printf("  api error: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
@@ -202,9 +221,25 @@ func startProxy(port int) error {
 
 		if isStream {
 			handleStreamResponse(w, resp)
-		} else {
-			handleNonStreamResponse(w, resp)
+			return
 		}
+
+		if upstreamStream {
+			out, err := collectStreamResponse(resp)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+				})
+				return
+			}
+			out = normalizeOpenAIResponse(out)
+			log.Printf("  nonstream (aggregated): model=%v content_len=%d finish=%v",
+				out["model"], len(getNested(out, "choices", 0, "message", "content").(string)), getNested(out, "choices", 0, "finish_reason"))
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+
+		handleNonStreamResponse(w, resp)
 	})
 	mux.HandleFunc("/v1/chat/completions", chatHandler)
 	mux.HandleFunc("/chat/completions", chatHandler)
@@ -233,11 +268,24 @@ func startProxy(port int) error {
 	fmt.Printf("  http://%s\n", addr)
 	fmt.Printf("  http://%s/v1\n", addr)
 	fmt.Println("  API Key: any value")
-	fmt.Printf("  Model:   %s\n", defaultModel)
+	fmt.Printf("  Model:   %s (auto-detected)\n", getDefaultModel())
 	fmt.Printf("  Accounts: %d total, %d active\n", len(loadPool().Accounts), activeCount)
 	fmt.Println(strings.Repeat("=", 58))
 
 	return server.ListenAndServe()
+}
+
+// initLogFile 将日志同时输出到控制台与 cline-proxy.log（追加模式），
+// 控制台窗口滚动内容有限，文件可完整保留所有日志。
+func initLogFile() {
+	path := resolveDataPath("cline-proxy.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("  open log file failed: %v", err)
+		return
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	log.Printf("========== proxy started, log file: %s ==========", path)
 }
 
 func corsHandler(h http.HandlerFunc) http.HandlerFunc {
@@ -284,9 +332,9 @@ func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
 		maxTokens = int(mt)
 	}
 
-	model := defaultModel
+	model := getDefaultModel()
 	if m, ok := params["model"].(string); ok && m != "" {
-		model = m
+		model = normalizeRequestModel(m)
 	}
 
 	body := map[string]any{
@@ -546,6 +594,147 @@ func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func collectStreamResponse(upstream *http.Response) (map[string]any, error) {
+	var (
+		model         string
+		content       strings.Builder
+		finishReason  string
+		usage         map[string]any
+		toolCalls     []any
+		toolCallIdx   = -1
+		curToolCall   map[string]any
+		curArgs       strings.Builder
+	)
+
+	reader := bufio.NewReader(upstream.Body)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF && err != bufio.ErrBufferFull {
+				break
+			}
+		}
+		line = strings.TrimRight(line, "\r\n")
+
+		if strings.HasPrefix(line, "data:") {
+			payload := strings.TrimSpace(line[5:])
+			if payload == "" || payload == "[DONE]" {
+				if err == io.EOF {
+					break
+				}
+				continue
+			}
+			var obj map[string]any
+			if json.Unmarshal([]byte(payload), &obj) != nil {
+				continue
+			}
+			if data, ok := obj["data"]; ok {
+				if d, ok := data.(map[string]any); ok {
+					obj = d
+				}
+			}
+			if m, ok := obj["model"].(string); ok && m != "" {
+				model = m
+			}
+			if u, ok := obj["usage"].(map[string]any); ok && len(u) > 0 {
+				usage = u
+			}
+			choices, _ := getNested(obj, "choices").([]any)
+			if len(choices) == 0 {
+				continue
+			}
+			choice, _ := choices[0].(map[string]any)
+			if choice == nil {
+				continue
+			}
+			delta, _ := choice["delta"].(map[string]any)
+			if delta == nil {
+				delta = choice
+			}
+			if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
+				finishReason = fr
+			}
+			if c, ok := delta["content"].(string); ok && c != "" {
+				content.WriteString(c)
+			}
+			if tcRaw, ok := delta["tool_calls"].([]any); ok {
+				for _, tc := range tcRaw {
+					tcMap, _ := tc.(map[string]any)
+					if tcMap == nil {
+						continue
+					}
+					idx := 0
+					if i, ok := tcMap["index"].(float64); ok {
+						idx = int(i)
+					}
+					if idx != toolCallIdx {
+						if curToolCall != nil {
+							curToolCall["function"].(map[string]any)["arguments"] = curArgs.String()
+							toolCalls = append(toolCalls, curToolCall)
+						}
+						curToolCall = map[string]any{
+							"id":       tcMap["id"],
+							"type":     "function",
+							"function": map[string]any{"name": "", "arguments": ""},
+						}
+						curArgs.Reset()
+						toolCallIdx = idx
+					}
+					if fn, ok := tcMap["function"].(map[string]any); ok {
+						if n, ok := fn["name"].(string); ok && n != "" {
+							curToolCall["function"].(map[string]any)["name"] = n
+						}
+						if a, ok := fn["arguments"].(string); ok && a != "" {
+							curArgs.WriteString(a)
+						}
+					}
+				}
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	if curToolCall != nil {
+		curToolCall["function"].(map[string]any)["arguments"] = curArgs.String()
+		toolCalls = append(toolCalls, curToolCall)
+	}
+
+	message := map[string]any{
+		"role":    "assistant",
+		"content": content.String(),
+	}
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+	}
+	choice := map[string]any{
+		"index":         0,
+		"message":       message,
+		"finish_reason": finishReason,
+	}
+	out := map[string]any{
+		"id":      "chatcmpl_" + fmt.Sprintf("%x", time.Now().UnixMilli()),
+		"object":  "chat.completion",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []any{choice},
+	}
+	if usage != nil {
+		out["usage"] = usage
+	}
+	return out, nil
+}
+
+func modelNeedsStream(modelID string) bool {
+	initModelsCache()
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	if m, ok := modelsCache[modelID]; ok && m.RequiresStream {
+		return true
+	}
+	return false
+}
+
 // Anthropic Messages API support
 type anthropicMsg struct {
 	Role    string `json:"role"`
@@ -683,7 +872,7 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 		case []any:
 			textParts := []string{}
 			var toolCalls []any
-			var toolResult *map[string]any
+			var toolResults []map[string]any
 
 			for _, block := range c {
 				if b, ok := block.(map[string]any); ok {
@@ -713,12 +902,15 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 						}
 						toolCalls = append(toolCalls, tc)
 					case "tool_result":
-						tr := map[string]any{
-							"role":         "tool",
-							"content":      b["content"],
-							"tool_call_id": b["tool_use_id"],
+						toolCallID, _ := b["tool_use_id"].(string)
+						if toolCallID == "" {
+							continue
 						}
-						toolResult = &tr
+						toolResults = append(toolResults, map[string]any{
+							"role":         "tool",
+							"content":      anthropicContentToString(b["content"]),
+							"tool_call_id": toolCallID,
+						})
 					}
 				}
 			}
@@ -730,8 +922,14 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 					"tool_calls": toolCalls,
 				}
 				msgs = append(msgs, msg)
-			} else if m.Role == "user" && toolResult != nil {
-				msgs = append(msgs, *toolResult)
+				log.Printf("  anthropic req: assistant tool_calls=%d", len(toolCalls))
+			} else if m.Role == "user" && len(toolResults) > 0 {
+				for _, tr := range toolResults {
+					msgs = append(msgs, tr)
+					content, _ := tr["content"].(string)
+					id, _ := tr["tool_call_id"].(string)
+					log.Printf("  anthropic req: tool_result id=%s content_len=%d prefix=%s", id, len(content), truncate(content, 400))
+				}
 			} else {
 				content := strings.Join(textParts, "\n")
 				msgs = append(msgs, map[string]any{"role": m.Role, "content": content})
@@ -741,6 +939,147 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 
 	openAI["messages"] = msgs
 	return openAI
+}
+
+// parseToolArgs 解析工具调用参数 JSON，带容错修复
+func parseToolArgs(raw string) (any, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[string]any{}, nil
+	}
+	// 清理杂散引号前缀：上游流式输出偶发 "" 前缀（如 ""{"file_path":...}）
+	for strings.HasPrefix(raw, `""`) {
+		raw = strings.TrimPrefix(raw, `""`)
+	}
+	raw = strings.TrimSpace(raw)
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err == nil {
+		if v == nil {
+			return map[string]any{}, nil
+		}
+		return v, nil
+	}
+	// 整体被 JSON 字符串包裹（"{\"file_path\": ...}"）时，解包字符串后再解析
+	if strings.HasPrefix(raw, `"`) && strings.HasSuffix(raw, `"`) && len(raw) >= 2 {
+		var s string
+		if json.Unmarshal([]byte(raw), &s) == nil {
+			var v2 any
+			if json.Unmarshal([]byte(s), &v2) == nil && v2 != nil {
+				return v2, nil
+			}
+		}
+	}
+	fixed := raw
+	if strings.HasPrefix(fixed, "{") && !strings.HasSuffix(fixed, "}") {
+		fixed += "}"
+	} else if strings.HasPrefix(fixed, "[") && !strings.HasSuffix(fixed, "]") {
+		fixed += "]"
+	}
+	if strings.HasSuffix(fixed, ",") {
+		fixed = strings.TrimRight(fixed, ",") + "}"
+	}
+	if err := json.Unmarshal([]byte(fixed), &v); err == nil && v != nil {
+		return v, nil
+	}
+	// 最终兜底：从杂散内容中提取首个 JSON 对象/数组
+	if i := strings.IndexAny(raw, "{["); i >= 0 {
+		openCh := raw[i]
+		closeCh := byte('}')
+		if openCh == '[' {
+			closeCh = ']'
+		}
+		if j := strings.LastIndex(raw, string(closeCh)); j > i {
+			sub := raw[i : j+1]
+			if json.Unmarshal([]byte(sub), &v) == nil && v != nil {
+				return v, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("invalid json: %s", truncate(raw, 120))
+}
+
+// extractToolSchemas 从 Anthropic 请求的 tools 定义中解析每个工具的 input_schema 属性集合，
+// 用于转发 tool_use 时裁剪 input，避免多余字段触发客户端校验失败。
+func extractToolSchemas(tools json.RawMessage) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	if len(tools) == 0 {
+		return out
+	}
+	var arr []map[string]any
+	if err := json.Unmarshal(tools, &arr); err != nil {
+		return out
+	}
+	for _, t := range arr {
+		name, _ := t["name"].(string)
+		if name == "" {
+			continue
+		}
+		schema, _ := t["input_schema"].(map[string]any)
+		props, _ := schema["properties"].(map[string]any)
+		var propNames []string
+		for k := range props {
+			propNames = append(propNames, k)
+		}
+		var required []string
+		if req, ok := schema["required"].([]any); ok {
+			for _, r := range req {
+				if s, ok := r.(string); ok {
+					required = append(required, s)
+				}
+			}
+		}
+		log.Printf("  tool schema: name=%s properties=%v required=%v", name, propNames, required)
+		if len(props) == 0 {
+			continue
+		}
+		allowed := map[string]bool{}
+		for k := range props {
+			allowed[k] = true
+		}
+		out[name] = allowed
+	}
+	return out
+}
+
+// filterToolInput 将工具参数裁剪到客户端 schema 允许的字段内；
+// 找不到 schema 或过滤后为空时保留原参数，避免丢参数。
+func filterToolInput(name string, input map[string]any, schemas map[string]map[string]bool) map[string]any {
+	allowed, ok := schemas[name]
+	if !ok || len(allowed) == 0 {
+		return input
+	}
+	out := map[string]any{}
+	for k, v := range input {
+		if allowed[k] {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return input
+	}
+	return out
+}
+
+// anthropicContentToString 将 Anthropic content（字符串或块数组）转为纯文本
+func anthropicContentToString(v any) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	if arr, ok := v.([]any); ok {
+		parts := []string{}
+		for _, it := range arr {
+			if b, ok := it.(map[string]any); ok {
+				if t, ok := b["text"].(string); ok {
+					parts = append(parts, t)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
 }
 
 func openAIToAnthropic(openAI map[string]any) map[string]any {
@@ -759,13 +1098,18 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 		return out
 	}
 
-	choice0 := getNested(openAI, "choices", 0).(map[string]any)
+	text := ""
+	choice0, ok := getNested(openAI, "choices", 0).(map[string]any)
+	if !ok {
+		out["content"] = []any{map[string]any{"type": "text", "text": text}}
+		out["stop_reason"] = "end_turn"
+		out["usage"] = map[string]any{"input_tokens": 0, "output_tokens": 0}
+		return out
+	}
 	msg, _ := choice0["message"].(map[string]any)
 	if msg == nil {
 		msg, _ = choice0["delta"].(map[string]any)
 	}
-
-	text := ""
 	if msg != nil {
 		if c, ok := msg["content"].(string); ok {
 			text = sanitizeContent(c)
@@ -777,13 +1121,16 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 	// Convert tool_calls to Anthropic tool_use blocks
 	if msg != nil {
 		if tc, ok := msg["tool_calls"].([]any); ok && len(tc) > 0 {
-			contentBlocks = []any{} // Clear text-only, proper response has both
+			contentBlocks = []any{}
 			if text != "" {
 				contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": text})
 			}
 			for _, tcItem := range tc {
 				if tcMap, ok := tcItem.(map[string]any); ok {
 					funcData, _ := tcMap["function"].(map[string]any)
+					if funcData == nil {
+						continue
+					}
 					input := funcData["arguments"]
 					// OpenAI arguments is a JSON string; Anthropic expects an object
 					if argsStr, ok := input.(string); ok {
@@ -792,10 +1139,21 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 							input = argsObj
 						}
 					}
+					if input == nil {
+						input = map[string]any{}
+					}
+					id, _ := tcMap["id"].(string)
+					if id == "" {
+						id = fmt.Sprintf("toolu_%x_%d", time.Now().UnixMilli(), len(contentBlocks))
+					}
+					name, _ := funcData["name"].(string)
+					if name == "" {
+						continue
+					}
 					block := map[string]any{
 						"type":  "tool_use",
-						"id":    tcMap["id"],
-						"name":  funcData["name"],
+						"id":    id,
+						"name":  name,
 						"input": input,
 					}
 					contentBlocks = append(contentBlocks, block)
@@ -853,6 +1211,11 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toolSchemas := extractToolSchemas(req.Tools)
+	if len(toolSchemas) > 0 {
+		log.Printf("  anthropic tools: %d schemas", len(toolSchemas))
+	}
+
 	if req.MaxTokens == 0 {
 		req.MaxTokens = defaultMaxTokens
 	}
@@ -879,7 +1242,13 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := callClineAPI(openAIReq, req.Stream)
+	upstreamStream := req.Stream
+	if !req.Stream && modelNeedsStream(normalizeRequestModel(req.Model)) {
+		upstreamStream = true
+		log.Printf("  anthropic model %s requires stream: forcing upstream stream, will aggregate", req.Model)
+	}
+
+	resp, err := callClineAPI(openAIReq, upstreamStream)
 	if err != nil {
 		log.Printf("  anthropic api error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
@@ -890,34 +1259,51 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if req.Stream {
-		handleAnthropicStream(w, resp)
-	} else {
-		var raw map[string]any
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		handleAnthropicStream(w, resp, normalizeRequestModel(req.Model), toolSchemas)
+		return
+	}
+
+	if upstreamStream {
+		out, err := collectStreamResponse(resp)
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 			})
 			return
 		}
-		out := raw
-		if data, ok := raw["data"]; ok {
-			if d, ok := data.(map[string]any); ok {
-				out = d
-			}
-		}
 		out = normalizeOpenAIResponse(out)
 		anthropicResp := openAIToAnthropic(out)
-
 		if tc, ok := getNested(out, "choices", 0, "message", "tool_calls").([]any); ok && len(tc) > 0 {
-			anthropicResp["content"] = []any{}
 			anthropicResp["stop_reason"] = "tool_use"
 		}
-
 		writeJSON(w, http.StatusOK, anthropicResp)
+		return
 	}
+
+	var raw map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+		})
+		return
+	}
+	out := raw
+	if data, ok := raw["data"]; ok {
+		if d, ok := data.(map[string]any); ok {
+			out = d
+		}
+	}
+	out = normalizeOpenAIResponse(out)
+	anthropicResp := openAIToAnthropic(out)
+
+	if tc, ok := getNested(out, "choices", 0, "message", "tool_calls").([]any); ok && len(tc) > 0 {
+		anthropicResp["stop_reason"] = "tool_use"
+	}
+
+	writeJSON(w, http.StatusOK, anthropicResp)
 }
 
-func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
+func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, modelName string, toolSchemas map[string]map[string]bool) {
 	log.Printf("  anthropic stream: starting real-time forward")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -929,10 +1315,23 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 		return
 	}
 
+	var streamLog *os.File
+	if sf, err := os.OpenFile(resolveDataPath("cline-proxy-stream.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		streamLog = sf
+	}
+	defer func() {
+		if streamLog != nil {
+			streamLog.Close()
+		}
+	}()
+
 	emit := func(event string, data any) {
 		d, _ := json.Marshal(data)
-		w.Write([]byte(fmt.Sprintf("event: %s\n", event)))
-		w.Write([]byte(fmt.Sprintf("data: %s\n\n", string(d))))
+		line := fmt.Sprintf("event: %s\ndata: %s\n\n", event, string(d))
+		w.Write([]byte(line))
+		if streamLog != nil {
+			streamLog.WriteString(line)
+		}
 		flusher.Flush()
 	}
 
@@ -941,11 +1340,15 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 	emit("message_start", map[string]any{
 		"type": "message_start",
 		"message": map[string]any{
-			"id":          msgID,
-			"type":        "message",
-			"role":        "assistant",
-			"content":     []any{},
-			"model":       "",
+			"id":      msgID,
+			"type":    "message",
+			"role":    "assistant",
+			"content": []any{},
+			"model":   modelName,
+			"usage": map[string]any{
+				"input_tokens":  0,
+				"output_tokens": 0,
+			},
 			"stop_reason": nil,
 		},
 	})
@@ -954,49 +1357,72 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 	*textIndex = -1
 	hasText := false
 	pendingTools := map[int]*toolAccumulator{}
+	emitIndex := 0
+	nextIndex := func() int {
+		i := emitIndex
+		emitIndex++
+		return i
+	}
 
 	emitToolBlock := func(acc *toolAccumulator) {
 		acc.emitted = true
-		var argsObj any
-		json.Unmarshal([]byte(acc.args), &argsObj)
-		if argsObj == nil {
+		if acc.name == "" {
+			log.Printf("  tool_use missing name, skipping (id=%s)", acc.id)
+			return
+		}
+		idx := nextIndex()
+		id := acc.id
+		if id == "" {
+			id = fmt.Sprintf("toolu_%x_%d", time.Now().UnixMilli(), idx)
+			log.Printf("  tool_use missing id, generated %s", id)
+		}
+		argsObj, err := parseToolArgs(acc.args)
+		if err != nil {
+			log.Printf("  tool args parse failed for %s: %v (raw: %s)", acc.name, err, truncate(acc.args, 300))
 			argsObj = map[string]any{}
 		}
+		if inputMap, ok := argsObj.(map[string]any); ok {
+			argsObj = filterToolInput(acc.name, inputMap, toolSchemas)
+		}
+		parsed, _ := json.Marshal(argsObj)
+		log.Printf("  tool_use emit: name=%s id=%s input=%s", acc.name, id, string(parsed))
 		emit("content_block_start", map[string]any{
 			"type":  "content_block_start",
-			"index": acc.index,
+			"index": idx,
 			"content_block": map[string]any{
 				"type":  "tool_use",
-				"id":    acc.id,
+				"id":    id,
 				"name":  acc.name,
-				"input": argsObj,
+				"input": map[string]any{},
+			},
+		})
+		emit("content_block_delta", map[string]any{
+			"type":  "content_block_delta",
+			"index": idx,
+			"delta": map[string]any{
+				"type":         "input_json_delta",
+				"partial_json": string(parsed),
 			},
 		})
 		emit("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
-			"index": acc.index,
+			"index": idx,
 		})
 	}
 
-	reader := bufio.NewReader(upstream.Body)
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			break
-		}
+	processSSELine := func(line string) {
 		line = strings.TrimRight(line, "\r\n")
 		if !strings.HasPrefix(line, "data:") {
-			continue
+			return
 		}
 		payload := strings.TrimSpace(line[5:])
 		if payload == "" || payload == "[DONE]" {
-			continue
+			return
 		}
 
 		var obj map[string]any
 		if err := json.Unmarshal([]byte(payload), &obj); err != nil {
-			continue
+			return
 		}
 		if data, ok := obj["data"]; ok {
 			if d, ok := data.(map[string]any); ok {
@@ -1004,21 +1430,20 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 			}
 		}
 
-		// Detect upstream SSE error
 		if errPayload, ok := obj["error"]; ok {
 			errBody, _ := json.Marshal(errPayload)
 			log.Printf("  upstream SSE error: %s", string(errBody))
 			emit("error", map[string]any{"type": "error", "error": errPayload})
-			break
+			return
 		}
 
 		choices, _ := getNested(obj, "choices").([]any)
 		if len(choices) == 0 {
-			continue
+			return
 		}
 		choice, _ := choices[0].(map[string]any)
 		if choice == nil {
-			continue
+			return
 		}
 
 		delta, ok := choice["delta"].(map[string]any)
@@ -1026,11 +1451,10 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 			delta = choice
 		}
 
-		// Text content delta
 		if c, ok := delta["content"].(string); ok && c != "" {
 			if !hasText {
 				hasText = true
-				*textIndex++
+				*textIndex = nextIndex()
 				emit("content_block_start", map[string]any{
 					"type":  "content_block_start",
 					"index": *textIndex,
@@ -1050,7 +1474,6 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 			})
 		}
 
-		// Tool calls - accumulate and emit when complete
 		if tcRaw, ok := delta["tool_calls"].([]any); ok {
 			for _, tc := range tcRaw {
 				tcMap, _ := tc.(map[string]any)
@@ -1075,15 +1498,15 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 					}
 					if args, ok := fn["arguments"].(string); ok && args != "" {
 						acc.args += args
+					} else if argsRaw, ok := fn["arguments"]; ok && argsRaw != nil {
+						if bts, err := json.Marshal(argsRaw); err == nil {
+							acc.args = string(bts)
+						}
 					}
-				}
-				if acc.id != "" && acc.name != "" && acc.args != "" && !acc.emitted {
-					emitToolBlock(acc)
 				}
 			}
 		}
 
-		// Finish reason
 		if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
 			switch fr {
 			case "length":
@@ -1091,6 +1514,18 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response) {
 			case "tool_calls":
 				stopReason = "tool_use"
 			}
+		}
+	}
+
+	reader := bufio.NewReader(upstream.Body)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			processSSELine(line)
+		}
+		if err != nil {
+			break
 		}
 	}
 

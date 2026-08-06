@@ -60,6 +60,7 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/keys/generate", corsHandler(handleAdminGenerateKey))
 	mux.HandleFunc("/admin/api/keys/delete", corsHandler(handleAdminDeleteKey))
 	mux.HandleFunc("/admin/api/models", corsHandler(handleAdminModels))
+	mux.HandleFunc("/admin/api/models/refresh", corsHandler(handleAdminModelsRefresh))
 	mux.HandleFunc("/admin/api/config", corsHandler(handleAdminConfig))
 	mux.HandleFunc("/admin/api/config/update", corsHandler(handleAdminUpdateConfig))
 }
@@ -745,15 +746,15 @@ func defaultProxyConfig() *proxyConfigData {
 	return &proxyConfigData{
 		Strategy: "round_robin",
 		Headers: map[string]string{
-			"User-Agent":         "Cline/3.0.47",
+			"User-Agent":         "Cline/3.0.50",
 			"HTTP-Referer":       "https://cline.bot",
 			"X-Title":            "Cline",
 			"X-IS-MULTIROOT":     "false",
 			"X-CLIENT-TYPE":      "cline-cli",
-			"X-CLIENT-VERSION":   "3.0.47",
+			"X-CLIENT-VERSION":   "3.0.50",
 			"X-PLATFORM":         "terminal",
-			"X-PLATFORM-VERSION": "3.0.47",
-			"X-CORE-VERSION":     "0.0.66",
+			"X-PLATFORM-VERSION": "3.0.50",
+			"X-CORE-VERSION":     "0.0.70",
 		},
 	}
 }
@@ -831,12 +832,12 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		"strategy":     cfg.Strategy,
 		"version":      "go-1.1",
 		"poolPath":     poolPath,
-		"defaultModel": defaultModel,
+		"defaultModel": getDefaultModel(),
 		"headers":      cfg.Headers,
 	}})
 }
 
-// POST /admin/api/config  body: { strategy?, headers? }
+// POST /admin/api/config  body: { strategy?, headers?, defaultModel? }
 func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
@@ -850,8 +851,9 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var req struct {
-		Strategy string            `json:"strategy"`
-		Headers  map[string]string `json:"headers"`
+		Strategy     string            `json:"strategy"`
+		Headers      map[string]string `json:"headers"`
+		DefaultModel string            `json:"defaultModel"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
@@ -879,25 +881,55 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		changed = true
 	}
 
+	if req.DefaultModel != "" {
+		initModelsCache()
+		modelsMu.Lock()
+		_, ok := modelsCache[req.DefaultModel]
+		modelsMu.Unlock()
+		if !ok {
+			writeAPI(w, http.StatusBadRequest, apiResponse{Error: "unknown model: " + req.DefaultModel})
+			return
+		}
+		setDefaultModel(req.DefaultModel)
+		changed = true
+	}
+
 	if changed {
 		setProxyConfig(cfg)
 	}
 
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
-		"strategy": cfg.Strategy,
-		"headers":  cfg.Headers,
+		"strategy":     cfg.Strategy,
+		"headers":      cfg.Headers,
+		"defaultModel": defaultModel,
 	}})
 }
 
 // GET /admin/api/models
 func handleAdminModels(w http.ResponseWriter, r *http.Request) {
-	models := []map[string]any{
-		{"id": "cline-free/glm-5.2", "provider": "zai", "cost": "free", "status": "active"},
-		{"id": "cline-pass/glm-5.2", "provider": "zai", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/deepseek-v4-flash", "provider": "deepseek", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/qwen3.7-max", "provider": "qwen", "cost": "pass", "status": "active"},
+	ensureModelsFresh()
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
+		"models":   getFreeModels(),
+		"lastSync": modelsLastSync,
+	}})
+}
+
+// POST /admin/api/models/refresh
+func handleAdminModelsRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
 	}
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"models": models}})
+	initModelsCache()
+	modelsMu.Lock()
+	syncing := modelsSyncing
+	modelsMu.Unlock()
+	if syncing {
+		writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "sync already running"})
+		return
+	}
+	go syncModelsOnce()
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "model sync started"})
 }
 
 // GET /admin/api/stats

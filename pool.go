@@ -17,8 +17,29 @@ var (
 )
 
 func init() {
-	exe, _ := os.Executable()
-	poolPath = filepath.Join(filepath.Dir(exe), ".cline-accounts.json")
+	poolPath = resolveDataPath(".cline-accounts.json")
+}
+
+// resolveDataPath 数据文件路径解析：优先可执行文件目录，其次当前工作目录。
+// go run 运行时编译产物在临时目录，此时应回退到工作目录（项目根）查找数据文件。
+func resolveDataPath(filename string) string {
+	candidates := []string{}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), filename))
+	}
+	if pwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(pwd, filename))
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	// 都不存在：默认写到当前工作目录（go run 场景），保证数据落盘位置稳定
+	if len(candidates) > 1 {
+		return candidates[1]
+	}
+	return candidates[0]
 }
 
 func loadPool() *AccountPool {
@@ -48,7 +69,27 @@ func loadPool() *AccountPool {
 		p.Keys = []string{}
 	}
 	pool = &p
+	if pool.DefaultModel != "" {
+		defaultModel = pool.DefaultModel
+	}
 	return pool
+}
+
+// setDefaultModel 持久化默认模型：更新内存全局并写入账号池文件
+func setDefaultModel(modelID string) {
+	initModelsCache()
+	modelsMu.Lock()
+	_, ok := modelsCache[modelID]
+	modelsMu.Unlock()
+	if !ok {
+		return
+	}
+	defaultModel = modelID
+	p := loadPool()
+	poolMu.Lock()
+	p.DefaultModel = modelID
+	poolMu.Unlock()
+	savePool()
 }
 
 func savePool() {

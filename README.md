@@ -92,14 +92,14 @@ docker compose down
 ```
 Base URL: http://127.0.0.1:3457/v1
 API Key:  <在管理后台生成的 Key>
-Model:    cline-free/glm-5.2
+Model:    deepseek/deepseek-v4-flash
 ```
 
 **Anthropic 格式（/v1/messages）：**
 ```
 Base URL: http://127.0.0.1:3457/v1
 API Key:  <在管理后台生成的 Key>
-Model:    cline-free/glm-5.2
+Model:    deepseek/deepseek-v4-flash
 ```
 
 ### 3. API Key 管理
@@ -124,18 +124,24 @@ Model:    cline-free/glm-5.2
 | `openai/gpt-4.1-nano` | ✅ 可用 · 消耗额度 | GPT-4.1 Nano |
 | `qwen/qwen3-235b-a22b` | ✅ 可用 · 消耗额度 | Qwen3 235B |
 | `meta-llama/llama-4-maverick` | ✅ 可用 · 消耗额度 | Llama 4 Maverick |
-| `deepseek/deepseek-v4-flash` | ⚠️ 响应为空 · 消耗额度 | API 返回 200 但内容为空 |
 | `google/gemini-2.5-flash` | ⚠️ 响应为空 · 消耗额度 | API 返回 200 但内容为空 |
 | `google/gemini-2.5-pro` | ⚠️ 响应为空 · 消耗额度 | API 返回 200 但内容为空 |
 
-### 不消耗账户额度
+### 官方免费模型
 
 | 模型 ID | 状态 | 说明 |
 |---------|:----:|------|
-| `cline-free/glm-5.2` | ✅ 可用 · 不消耗额度 | 免费模型，无限使用 |
-| `cline-pass/glm-5.2` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
-| `cline-pass/deepseek-v4-flash` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
-| `cline-pass/qwen3.7-max` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `deepseek/deepseek-v4-flash` | ✅ 可用 · 不消耗额度 | DeepSeek V4 Flash |
+| `poolside/laguna-s-2.1:free` | ✅ 可用 · 不消耗额度 | Poolside Laguna S 2.1 |
+| `stepfun/step-3.7-flash` | ✅ 可用 · 不消耗额度 | StepFun 3.7 Flash |
+
+### 需要订阅
+
+| 模型 ID | 状态 | 说明 |
+|---------|:----:|------|
+| `cline-pass/glm-5.2` | ❌ 403 · 需要订阅 | 需要 `cline-pass` 订阅 |
+| `cline-pass/deepseek-v4-flash` | ❌ 403 · 需要订阅 | 需要 `cline-pass` 订阅 |
+| `cline-pass/qwen3.7-max` | ❌ 403 · 需要订阅 | 需要 `cline-pass` 订阅 |
 
 可在后台 **设置** → **默认模型** 中修改默认模型。
 
