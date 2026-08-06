@@ -340,7 +340,7 @@ func clineHeaders(token, sessionID string) http.Header {
 func callClineAPI(params map[string]any, stream bool) (*http.Response, error) {
 	acc := pickAccount()
 	if acc == nil {
-		return nil, fmt.Errorf("no active accounts available. Use --login or admin API to add accounts")
+		return nil, fmt.Errorf("no active accounts available: %s", describePoolStatus())
 	}
 
 	token, err := ensureAccountToken(acc)
@@ -374,8 +374,8 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		acc.Status = "cooldown"
-		savePool()
+		// 网络错误：临时短冷却 5 分钟
+		markAccountCooldown(acc, "network error: "+err.Error(), 5*time.Minute)
 		return nil, fmt.Errorf("upstream request: %w", err)
 	}
 
@@ -407,14 +407,18 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, error) {
 		resp.Body.Close()
 		// Mark account on cooldown on rate limits
 		if resp.StatusCode == 429 {
-			acc.Status = "cooldown"
-			savePool()
+			reason := truncate(string(bodyBytes), 500)
+			duration := parseInferenceCapDuration(string(bodyBytes))
+			if duration <= 0 {
+				duration = parseRetryAfter(resp.Header.Get("Retry-After"))
+			}
+			markAccountCooldown(acc, "429: "+reason, duration)
+			log.Printf("  account %s cooldown %v (reason: %s)", truncateEmail(acc.Email), duration, reason)
 		}
 		return nil, fmt.Errorf("API %d: %s", resp.StatusCode, truncate(string(bodyBytes), 500))
 	}
 
-	acc.LastUsed = time.Now()
-	acc.UsageCount++
+	bumpUsage(acc)
 	savePool()
 	return resp, nil
 }
@@ -575,14 +579,14 @@ type anthropicReq struct {
 func loadOverrideContent() string {
 	data, err := os.ReadFile("override.md")
 	if err != nil {
-		log.Printf("  override.md not found: %v", err)
+		// override.md 是可选功能，文件不存在时静默使用客户端自带提示词
 		return ""
 	}
 	content := strings.TrimSpace(string(data))
 	if content != "" {
 		log.Printf("  using override.md as system prompt (%d bytes)", len(content))
 	} else {
-		log.Printf("  override.md is empty")
+		log.Printf("  override.md is empty, using client system prompt")
 	}
 	return content
 }
@@ -1228,4 +1232,97 @@ func freePort(port int) {
 		fmt.Sprintf(`$p=Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue; if($p){Stop-Process -Id $p.OwningProcess -Force}`, port))
 	_ = cmd.Run()
 	time.Sleep(500 * time.Millisecond)
+}
+
+// parseInferenceCapDuration 从 Cline 429 错误体中解析 "Try again in 17h 59m" 形式的等待时长。
+// 支持 "17h 59m"、"17h"、"59m"、"30s"、"1d 2h 30m" 等组合。
+func parseInferenceCapDuration(body string) time.Duration {
+	// 在错误体中查找 "Try again in ..." 子串
+	idx := strings.Index(body, "Try again in")
+	if idx < 0 {
+		return 0
+	}
+	rest := body[idx+len("Try again in"):]
+	// 截取到下一个引号或换行
+	end := len(rest)
+	if i := strings.IndexAny(rest, "\"\n\r}"); i >= 0 {
+		end = i
+	}
+	segment := strings.TrimSpace(rest[:end])
+	return parseHumanDuration(segment)
+}
+
+// parseHumanDuration 解析 "17h 59m" / "2h" / "59m" / "30s" / "1d 2h" 之类的时长。
+func parseHumanDuration(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	var total time.Duration
+	num := 0
+	valid := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+			num = num*10 + int(c-'0')
+			valid = true
+		case c == 'd':
+			total += time.Duration(num) * 24 * time.Hour
+			num, valid = 0, false
+		case c == 'h':
+			total += time.Duration(num) * time.Hour
+			num, valid = 0, false
+		case c == 'm' && i+1 < len(s) && s[i+1] == 's':
+			total += time.Duration(num) * time.Millisecond
+			num, valid = 0, false
+			i++
+		case c == 'm':
+			total += time.Duration(num) * time.Minute
+			num, valid = 0, false
+		case c == 's':
+			total += time.Duration(num) * time.Second
+			num, valid = 0, false
+		case c == ' ':
+			// 分隔符
+		default:
+			// 未知字符，重置
+			num, valid = 0, false
+		}
+	}
+	if total <= 0 {
+		return 0
+	}
+	_ = valid
+	return total
+}
+
+// parseRetryAfter 解析 HTTP Retry-After 头（秒数或 HTTP 日期）。
+func parseRetryAfter(header string) time.Duration {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return 0
+	}
+	// 尝试秒数
+	if secs, err := parseIntSafe(header); err == nil {
+		return time.Duration(secs) * time.Second
+	}
+	// 尝试 HTTP 日期
+	if t, err := http.ParseTime(header); err == nil {
+		d := time.Until(t)
+		if d > 0 {
+			return d
+		}
+	}
+	return 0
+}
+
+func parseIntSafe(s string) (int, error) {
+	var n int
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, fmt.Errorf("not a number")
+		}
+		n = n*10 + int(s[i]-'0')
+	}
+	return n, nil
 }

@@ -11,6 +11,10 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词，不存在则使用客户端自带
 - **账号导入**：支持 OAuth 浏览器登录、手动 Token 输入、批量文件导入
 - **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`
+- **账号冷却与自动恢复**：命中 429 `INFERENCE_CAP_ERROR` 时自动解析 "Try again in 17h 59m" 并标记冷却，冷却到期自动恢复，账号列表显示预计恢复时间
+- **账号测试**：后台账号管理提供「⚡测试」按钮，对单个账号发起真实探测请求，验证是否可用；测试成功会清除冷却/过期状态（相当于升级版重置），失败会按上游返回的等待时长标记冷却
+- **今日/总次数统计**：账号列表显示「今日/总次数」，跨日自动重置今日计数；「↻重置」按钮仅重置今日次数，不影响总次数、状态和 Token
+- **多平台 CI/CD**：GitHub Actions 自动构建，推送代码到 main 即触发，生成 Windows (amd64/arm64)、Linux (amd64/arm64)、macOS (amd64/arm64) 共 6 个平台二进制，发布标题格式为 `v年_月日_时分`
 
 ## 快速开始
 
@@ -29,6 +33,25 @@ go run . -start
 ```
 
 启动后访问 http://127.0.0.1:3457/admin/ 进入管理后台。
+
+### 构建脚本
+
+```powershell
+# 重建并重启（开发热更新：停进程 → 构建 Win x86 → 启动 → 打开浏览器）
+.\rebuild.ps1
+
+# 指定端口
+.\rebuild.ps1 -Port 3458
+
+# 只构建不启动
+.\rebuild.ps1 -NoStart
+
+# 构建不打开浏览器
+.\rebuild.ps1 -NoOpenBrowser
+
+# 多平台交叉编译（输出到 dist/）
+.\build.ps1 -Targets "windows/amd64","windows/arm64","linux/amd64","linux/arm64","darwin/amd64","darwin/arm64"
+```
 
 ### Docker 部署
 
@@ -54,6 +77,12 @@ docker compose down
 - **OAuth 浏览器登录**：点击按钮弹出 WorkOS 登录窗口，完成后自动填入
 - **手动输入 Token**：输入已有账号的 Access Token
 - **批量文件导入**：上传包含账号数据的 JSON 文件
+
+账号列表操作列说明：
+
+- **⚡ 测试**：对账号发起一次真实探测请求。成功则将账号置为活跃（清除冷却/过期状态，相当于升级版重置）；失败则按上游返回的等待时长标记冷却并显示预计恢复时间。
+- **↻ 重置**：仅重置该账号的「今日使用次数」，不影响总次数、状态和 Token。
+- **✕ 删除**：从账号池移除该账号。
 
 ### 2. 配置客户端
 
@@ -110,6 +139,16 @@ Model:    cline-free/glm-5.2
 
 可在后台 **设置** → **默认模型** 中修改默认模型。
 
+## CI/CD
+
+推送代码到 `main` 分支自动触发 GitHub Actions 工作流：
+
+1. 并行构建 6 个平台二进制（Windows/Linux/macOS × amd64/arm64）
+2. 自动创建 Release，标题格式为 `v年_月日_时分`（如 `v2026_0804_1415`）
+3. 所有二进制作为 Release Assets 上传
+
+工作流配置位于 [.github/workflows/build.yml](.github/workflows/build.yml)。
+
 ## 项目结构
 
 ```
@@ -122,8 +161,11 @@ Model:    cline-free/glm-5.2
 ├── types.go            数据结构定义
 ├── capture.go          OAuth 信息捕获工具
 ├── http.go             HTTP 客户端与工具函数
+├── build.ps1           多平台交叉编译脚本
+├── rebuild.ps1         重建并重启脚本（开发热更新）
 ├── Dockerfile          Docker 构建
 ├── docker-compose.yml  Docker Compose 配置
+├── .github/workflows/build.yml  GitHub Actions 多平台构建
 └── override.md         可选的系统提示词覆盖文件
 
 ---

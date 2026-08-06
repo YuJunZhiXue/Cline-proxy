@@ -119,6 +119,12 @@ func pickAccount() *Account {
 
 	active := make([]*Account, 0)
 	for _, a := range p.Accounts {
+		// 自动解除已到期的冷却
+		if a.Status == "cooldown" && !a.CooldownUntil.IsZero() && time.Now().After(a.CooldownUntil) {
+			a.Status = "active"
+			a.CooldownUntil = time.Time{}
+			a.LastReason = ""
+		}
 		if a.Status == "active" {
 			active = append(active, a)
 		}
@@ -168,19 +174,110 @@ func listAccounts() []*Account {
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
+	// 自动解除已到期的冷却，确保返回的列表是最新状态
+	for _, a := range p.Accounts {
+		if a.Status == "cooldown" && !a.CooldownUntil.IsZero() && time.Now().After(a.CooldownUntil) {
+			a.Status = "active"
+			a.CooldownUntil = time.Time{}
+			a.LastReason = ""
+		}
+	}
+	savePool()
+
 	result := make([]*Account, len(p.Accounts))
 	for i, a := range p.Accounts {
 		// Don't expose tokens
 		result[i] = &Account{
-			AccountID:  a.AccountID,
-			Email:      a.Email,
-			Status:     a.Status,
-			LastUsed:   a.LastUsed,
-			UsageCount: a.UsageCount,
-			CreatedAt:  a.CreatedAt,
+			AccountID:       a.AccountID,
+			Email:           a.Email,
+			Status:          a.Status,
+			LastUsed:        a.LastUsed,
+			UsageCount:      a.UsageCount,
+			UsageCountToday: a.UsageCountToday,
+			UsageDate:       a.UsageDate,
+			CreatedAt:       a.CreatedAt,
+			CooldownUntil:   a.CooldownUntil,
+			LastReason:     a.LastReason,
 		}
 	}
 	return result
+}
+
+// markAccountCooldown 将账号置为冷却状态，并记录预计恢复时间。
+// duration 为冷却时长；duration<=0 时使用默认冷却。
+func markAccountCooldown(acc *Account, reason string, duration time.Duration) {
+	if acc == nil {
+		return
+	}
+	if duration <= 0 {
+		duration = 18 * time.Hour // 默认 18 小时（Cline 免费额度每日重置）
+	}
+	acc.Status = "cooldown"
+	acc.CooldownUntil = time.Now().Add(duration)
+	acc.LastReason = reason
+	savePool()
+}
+
+// bumpUsage 递增账号使用计数（含今日计数），自动处理跨日重置。
+func bumpUsage(acc *Account) {
+	if acc == nil {
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if acc.UsageDate != today {
+		acc.UsageDate = today
+		acc.UsageCountToday = 0
+	}
+	acc.UsageCountToday++
+	acc.UsageCount++
+	acc.LastUsed = time.Now()
+}
+
+// resetTodayUsage 仅重置今日使用计数，不影响总次数。
+func resetTodayUsage(acc *Account) {
+	if acc == nil {
+		return
+	}
+	acc.UsageDate = time.Now().Format("2006-01-02")
+	acc.UsageCountToday = 0
+	savePool()
+}
+
+// describePoolStatus 汇总当前账号池状态，用于错误诊断。
+func describePoolStatus() string {
+	p := loadPool()
+	poolMu.Lock()
+	defer poolMu.Unlock()
+
+	total := len(p.Accounts)
+	if total == 0 {
+		return "pool is empty, use --add-account or admin API to add accounts"
+	}
+
+	active, cooldown, expired := 0, 0, 0
+	var nextRecover *time.Time
+	for _, a := range p.Accounts {
+		switch a.Status {
+		case "active":
+			active++
+		case "cooldown":
+			cooldown++
+			if !a.CooldownUntil.IsZero() {
+				if nextRecover == nil || a.CooldownUntil.Before(*nextRecover) {
+					t := a.CooldownUntil
+					nextRecover = &t
+				}
+			}
+		case "expired":
+			expired++
+		}
+	}
+
+	s := fmt.Sprintf("total=%d active=%d cooldown=%d expired=%d", total, active, cooldown, expired)
+	if cooldown > 0 && nextRecover != nil {
+		s += fmt.Sprintf(", earliest recover at %s", nextRecover.Format("2006-01-02 15:04:05"))
+	}
+	return s
 }
 
 func addAccountFromDeviceAuth() (*Account, error) {

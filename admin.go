@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,7 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/accounts", corsHandler(handleAdminAccounts))
 	mux.HandleFunc("/admin/api/accounts/add", corsHandler(handleAdminAccountAdd))
 	mux.HandleFunc("/admin/api/accounts/delete", corsHandler(handleAdminAccountDelete))
+	mux.HandleFunc("/admin/api/accounts/test", corsHandler(handleAdminAccountTest))
 	mux.HandleFunc("/admin/api/oauth/start", corsHandler(handleOAuthStart))
 	mux.HandleFunc("/admin/api/oauth/status", corsHandler(handleOAuthStatus))
 	mux.HandleFunc("/admin/api/sso/import", corsHandler(handleSSOImport))
@@ -497,6 +499,7 @@ func handleAdminDeleteAll(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /admin/api/accounts/reset  body: { accountId }
+// 仅重置该账号的今日使用次数，不影响总次数、状态和 Token。
 func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
@@ -523,15 +526,208 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reset status to active and refresh token
-	acc.Status = "active"
-	acc.UsageCount = 0
-	if err := refreshAccountToken(acc); err != nil {
-		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: "reset failed: " + err.Error()})
+	resetTodayUsage(acc)
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "今日次数已重置"})
+}
+
+// POST /admin/api/accounts/test  body: { accountId }
+// 用指定账号发送一个 max_tokens=1 的极小探测请求，验证该账号是否可用。
+// 如果命中 429/INFERENCE_CAP_ERROR，自动标记冷却并返回预计恢复时间。
+func handleAdminAccountTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		AccountID string `json:"accountId"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+	if req.AccountID == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "accountId is required"})
 		return
 	}
 
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "Account reset"})
+	acc := getAccountByID(req.AccountID)
+	if acc == nil {
+		writeAPI(w, http.StatusNotFound, apiResponse{Error: "account not found"})
+		return
+	}
+
+	result, status := testAccount(acc)
+	reason, _ := result["reason"].(string)
+	log.Printf("Test account %s: status=%s reason=%s", truncateEmail(acc.Email), status, reason)
+
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: status == "active",
+		Message: status,
+		Data:    result,
+	})
+}
+
+// testAccount 对单个账号执行轻量探测请求，返回详细结果与最终状态。
+// 测试按钮是"升级版重置"：无论账号当前是 active/cooldown/expired，
+// 都会尝试刷新 Token 并发起一次真实探测；成功则清除所有异常状态。
+// 返回的 status: active / cooldown / expired / error
+func testAccount(acc *Account) (map[string]any, string) {
+	prevStatus := acc.Status
+	prevCooldownUntil := acc.CooldownUntil
+	_ = prevCooldownUntil
+
+	// 取 token（expired/cooldown 也尝试刷新，测试按钮不因状态直接拒绝）
+	token, err := ensureAccountToken(acc)
+	if err != nil {
+		acc.LastReason = "token refresh failed: " + err.Error()
+		acc.Status = "expired"
+		acc.CooldownUntil = time.Time{}
+		savePool()
+		return map[string]any{
+			"accountId":  acc.AccountID,
+			"email":      acc.Email,
+			"status":     "expired",
+			"reason":     acc.LastReason,
+			"prevStatus": prevStatus,
+		}, "expired"
+	}
+
+	// 构造极小探测请求：max_tokens=1, 单条用户消息
+	probeBody := map[string]any{
+		"model":             defaultModel,
+		"max_tokens":        1,
+		"session_id":        fmt.Sprintf("test_%d", time.Now().UnixMilli()),
+		"reasoning_effort": defaultReasoningEffort,
+		"messages": []map[string]any{
+			{"role": "user", "content": "ping"},
+		},
+	}
+	bodyJSON, _ := json.Marshal(probeBody)
+
+	req, err := http.NewRequest("POST", clineAPIBase+"/chat/completions", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return map[string]any{
+			"accountId": acc.AccountID,
+			"email":     acc.Email,
+			"status":    "error",
+			"reason":    "build request: " + err.Error(),
+		}, "error"
+	}
+	req.Header = clineHeaders(token, "")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// 网络错误：5 分钟短冷却
+		markAccountCooldown(acc, "network error: "+err.Error(), 5*time.Minute)
+		return map[string]any{
+			"accountId": acc.AccountID,
+			"email":     acc.Email,
+			"status":    "cooldown",
+			"reason":    acc.LastReason,
+			"cooldownUntil": acc.CooldownUntil.Format("2006-01-02 15:04:05"),
+			"remaining": formatDuration(time.Until(acc.CooldownUntil)),
+		}, "cooldown"
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyStr := string(bodyBytes)
+
+	if resp.StatusCode == 429 {
+		duration := parseInferenceCapDuration(bodyStr)
+		if duration <= 0 {
+			duration = parseRetryAfter(resp.Header.Get("Retry-After"))
+		}
+		reason := truncate(bodyStr, 500)
+		markAccountCooldown(acc, "429: "+reason, duration)
+		log.Printf("Test hit 429 on %s, cooldown %v", truncateEmail(acc.Email), duration)
+		return map[string]any{
+			"accountId":     acc.AccountID,
+			"email":         acc.Email,
+			"status":        "cooldown",
+			"reason":        acc.LastReason,
+			"cooldownUntil": acc.CooldownUntil.Format("2006-01-02 15:04:05"),
+			"remaining":     formatDuration(time.Until(acc.CooldownUntil)),
+			"httpStatus":    resp.StatusCode,
+		}, "cooldown"
+	}
+
+	if resp.StatusCode == 401 {
+		acc.Status = "expired"
+		acc.LastReason = "401 unauthorized"
+		acc.CooldownUntil = time.Time{}
+		savePool()
+		return map[string]any{
+			"accountId":  acc.AccountID,
+			"email":      acc.Email,
+			"status":     "expired",
+			"reason":     acc.LastReason,
+			"httpStatus": resp.StatusCode,
+		}, "expired"
+	}
+
+	if resp.StatusCode != 200 {
+		// 其它错误：不强制冷却，按一次失败处理
+		return map[string]any{
+			"accountId":  acc.AccountID,
+			"email":      acc.Email,
+			"status":     "error",
+			"reason":     fmt.Sprintf("API %d: %s", resp.StatusCode, truncate(bodyStr, 300)),
+			"httpStatus": resp.StatusCode,
+		}, "error"
+	}
+
+	// 成功：清除所有异常状态（冷却/过期/原因），并递增使用计数
+	acc.Status = "active"
+	acc.LastReason = ""
+	acc.CooldownUntil = time.Time{}
+	bumpUsage(acc)
+	savePool()
+	return map[string]any{
+		"accountId":  acc.AccountID,
+		"email":      acc.Email,
+		"status":     "active",
+		"reason":     "ok",
+		"httpStatus": resp.StatusCode,
+		"prevStatus": prevStatus,
+	}, "active"
+}
+
+func formatDuration(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	days := int(d / (24 * time.Hour))
+	d -= time.Duration(days) * 24 * time.Hour
+	hours := int(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+	mins := int(d / time.Minute)
+	d -= time.Duration(mins) * time.Minute
+	secs := int(d / time.Second)
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if mins > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", mins))
+	}
+	if secs > 0 && days == 0 && hours == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", secs))
+	}
+	if len(parts) == 0 {
+		return "0s"
+	}
+	return strings.Join(parts, " ")
 }
 
 // Global proxy config (mutable via API)

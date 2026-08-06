@@ -7,12 +7,14 @@ const adminHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cline 代理管理面板</title>
 <style>
-:root{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff}
+:root{--bg:#ffffff;--bg2:#f6f8fa;--bg3:#eaeef2;--border:#d0d7de;--text:#1f2328;--text2:#636c76;--accent:#0969de;--green:#1a7f37;--red:#cf222e;--yellow:#9a6700;--blue:#0969de;--status-active-bg:#dafbe1;--status-cooldown-bg:#fff8c5;--status-expired-bg:#ffebe9;--btn-primary-bg:#1f6feb;--btn-primary-hover:#388bfd;--btn-success-bg:#1a7f37;--btn-success-hover:#238636;--btn-danger-hover-bg:#ffebe9;--toast-success-bg:#1a7f37;--toast-error-bg:#cf222e;--toast-info-bg:#1f6feb;--toast-warning-bg:#9a6700;--link:#0969de}
+[data-theme="dark"]{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--status-active-bg:#0e4429;--status-cooldown-bg:#3d2e00;--status-expired-bg:#3d1117;--btn-primary-bg:#1f6feb;--btn-primary-hover:#388bfd;--btn-success-bg:#1a7f37;--btn-success-hover:#238636;--btn-danger-hover-bg:#3d1117;--toast-success-bg:#1a7f37;--toast-error-bg:#f85149;--toast-info-bg:#1f6feb;--toast-warning-bg:#d29922;--link:#58a6ff}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
 .layout{display:flex;min-height:100vh}
 .sidebar{width:240px;background:var(--bg2);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;display:flex;flex-direction:column}
 .sidebar h1{font-size:16px;padding:0 16px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.sidebar h1 .theme-toggle{margin-left:auto;padding:3px 8px}
 .sidebar h1 span{color:var(--accent)}
 .nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;color:var(--text2);transition:0.15s;border-left:2px solid transparent}
 .nav-item:hover{color:var(--text);background:var(--bg3)}
@@ -40,21 +42,21 @@ table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px}
 th{color:var(--text2);font-weight:600;font-size:12px}
 .status{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500}
-.status.active{background:#0e4429;color:var(--green)}
-.status.cooldown{background:#3d2e00;color:var(--yellow)}
-.status.expired{background:#3d1117;color:var(--red)}
+.status.active{background:var(--status-active-bg);color:var(--green)}
+.status.cooldown{background:var(--status-cooldown-bg);color:var(--yellow)}
+.status.expired{background:var(--status-expired-bg);color:var(--red)}
 .status-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .status-dot.active{background:var(--green)}
 .status-dot.cooldown{background:var(--yellow)}
 .status-dot.expired{background:var(--red)}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px;transition:0.15s;text-decoration:none}
 .btn:hover{background:var(--border)}
-.btn-primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
-.btn-primary:hover{background:#388bfd}
-.btn-success{background:#1a7f37;border-color:#1a7f37;color:#fff}
-.btn-success:hover{background:#238636}
+.btn-primary{background:var(--btn-primary-bg);border-color:var(--btn-primary-bg);color:#fff}
+.btn-primary:hover{background:var(--btn-primary-hover)}
+.btn-success{background:var(--btn-success-bg);border-color:var(--btn-success-bg);color:#fff}
+.btn-success:hover{background:var(--btn-success-hover)}
 .btn-danger{border-color:var(--red);color:var(--red)}
-.btn-danger:hover{background:#3d1117}
+.btn-danger:hover{background:var(--btn-danger-hover-bg)}
 .btn-sm{padding:3px 10px;font-size:12px}
 input,textarea,select{width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit}
 input:focus,textarea:focus{outline:none;border-color:var(--accent)}
@@ -65,9 +67,10 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 .form-actions{display:flex;gap:8px;margin-top:12px}
 .toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;z-index:9999;opacity:0;transform:translateY(-10px);transition:0.3s;font-size:13px;max-width:400px}
 .toast.show{opacity:1;transform:translateY(0)}
-.toast.success{background:#1a7f37}
-.toast.error{background:var(--red)}
-.toast.info{background:#1f6feb}
+.toast.success{background:var(--toast-success-bg)}
+.toast.error{background:var(--toast-error-bg)}
+.toast.info{background:var(--toast-info-bg)}
+.toast.warning{background:var(--toast-warning-bg)}
 .loading{display:inline-block;width:14px;height:14px;border:2px solid var(--text2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{padding:32px;text-align:center;color:var(--text2)}
@@ -87,12 +90,17 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 .model-tag.free{border:1px solid var(--green);color:var(--green)}
 .model-tag.pass{border:1px solid var(--yellow);color:var(--yellow)}
 .justify-between{display:flex;justify-content:space-between;align-items:center}
+.theme-toggle{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text2);cursor:pointer;font-size:12px;transition:0.15s}
+.theme-toggle:hover{color:var(--text);background:var(--border)}
+.theme-toggle .icon{font-size:14px}
+[data-theme="dark"] .theme-toggle .light-label{display:none}
+:root:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </style>
 </head>
 <body>
 <div class="layout">
 <div class="sidebar">
-<h1><span>⚡</span>Cline 代理</h1>
+<h1><span>⚡</span>Cline 代理<button class="theme-toggle" onclick="toggleTheme()" title="切换主题"><span class="icon" id="themeIcon">☀️</span><span class="light-label">浅色</span><span class="dark-label">深色</span></button></h1>
 <div class="nav-item active" data-tab="dashboard"><span>📊</span> 仪表盘</div>
 <div class="nav-item" data-tab="accounts"><span>👤</span> 账号管理</div>
 <div class="nav-item" data-tab="import"><span>📥</span> 导入账号</div>
@@ -137,7 +145,7 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
   <div class="section-body" style="padding:0">
     <table>
       <thead>
-        <tr><th>邮箱</th><th>状态</th><th>使用次数</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
+        <tr><th>邮箱</th><th>状态</th><th>今日/总次数</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
       </thead>
       <tbody id="accountTableBody">
         <tr><td colspan="6" class="empty">加载中...</td></tr>
@@ -295,14 +303,39 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 <script>
 const API = '/admin/api';
 
+// ========== 主题切换 ==========
+function getTheme() {
+  return localStorage.getItem('theme') || 'light';
+}
+function applyTheme(t) {
+  if (t === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const ic = document.getElementById('themeIcon');
+    if (ic) ic.textContent = '🌙';
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const ic = document.getElementById('themeIcon');
+    if (ic) ic.textContent = '☀️';
+  }
+}
+function toggleTheme() {
+  const cur = getTheme();
+  const next = cur === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+}
+applyTheme(getTheme());
+
 const _ = id => document.getElementById(id);
 const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
 
-function toast(msg, t) {
+function toast(msg, t, duration) {
   const el = _('toast');
   el.textContent = msg;
-  el.className = 'toast ' + t + ' show';
-  setTimeout(() => el.classList.remove('show'), 3500);
+  el.style.whiteSpace = 'pre-line';
+  el.className = 'toast ' + (t || 'info') + ' show';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), duration || 3500);
 }
 
 // ========== 导航 ==========
@@ -378,18 +411,50 @@ async function loadAccounts() {
     tbody.innerHTML = list.map(a => {
       const lu = a.lastUsed ? new Date(a.lastUsed).toLocaleString('zh-CN') : '-';
       const cr = a.createdAt ? new Date(a.createdAt).toLocaleString('zh-CN') : '-';
+      // 冷却标签：展示预计恢复时间
+      let statusExtra = '';
+      if (a.status === 'cooldown') {
+        const until = a.cooldownUntil ? new Date(a.cooldownUntil).toLocaleString('zh-CN') : '';
+        statusExtra = until ? '<div style="font-size:10px;color:var(--text2);margin-top:2px">预计 ' + esc(until) + ' 恢复</div>' : '';
+      }
       return '<tr>' +
         '<td>' + esc(a.email) + '</td>' +
-        '<td><span class="status ' + a.status + '"><span class="status-dot ' + a.status + '"></span>' + (sn[a.status] || a.status) + '</span></td>' +
-        '<td>' + (a.usageCount || 0) + '</td>' +
+        '<td><span class="status ' + a.status + '"><span class="status-dot ' + a.status + '"></span>' + (sn[a.status] || a.status) + '</span>' + statusExtra + '</td>' +
+        '<td>' + (a.usageCountToday || 0) + ' / ' + (a.usageCount || 0) + '</td>' +
         '<td class="mono" style="font-size:11px">' + lu + '</td>' +
         '<td class="mono" style="font-size:11px">' + cr + '</td>' +
         '<td style="white-space:nowrap">' +
-          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置">↻</button> ' +
+          '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\', this)" title="测试账号是否可用（成功会清除冷却/过期状态）">⚡</button> ' +
+          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置今日次数">↻</button> ' +
           '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
         '</td></tr>';
     }).join('');
   } catch (e) { toast('加载账号失败: ' + e.message, 'error'); }
+}
+
+async function testAccount(id, btn) {
+  const original = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading"></span>测试中'; }
+  try {
+    const d = await api('POST', '/accounts/test', { accountId: id });
+    const r = d.data || {};
+    const statusMap = { active: '可用', cooldown: '冷却', expired: '已失效', error: '错误' };
+    const label = statusMap[r.status] || r.status;
+    const prevMap = { active: '活跃', cooldown: '冷却', expired: '已过期', '': '' };
+    let msg = '账号 ' + esc(r.email || '') + ' — ' + label;
+    if (r.prevStatus && r.prevStatus !== r.status) msg += '（原状态: ' + (prevMap[r.prevStatus] || r.prevStatus) + '）';
+    if (r.cooldownUntil) msg += '\n预计恢复: ' + esc(r.cooldownUntil);
+    if (r.remaining) msg += '（剩余 ' + esc(r.remaining) + '）';
+    if (r.reason) msg += '\n原因: ' + esc(r.reason);
+    if (r.httpStatus) msg += '\nHTTP: ' + r.httpStatus;
+    const type = r.status === 'active' ? 'success' : (r.status === 'cooldown' ? 'warning' : 'error');
+    toast(msg, type, 6000);
+    loadAccounts(); loadStats();
+  } catch (e) {
+    toast('测试失败: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = original; }
+  }
 }
 
 async function deleteAccount(id) {
@@ -402,10 +467,10 @@ async function deleteAccount(id) {
 }
 
 async function resetAccount(id) {
-  if (!confirm('确定重置此账号？将清除使用计数并刷新 Token。')) return;
+  if (!confirm('确定重置此账号的今日使用次数？不影响总次数、状态和 Token。')) return;
   try {
-    await api('POST', '/accounts/reset', { accountId: id });
-    toast('账号已重置', 'success');
+    const d = await api('POST', '/accounts/reset', { accountId: id });
+    toast(d.message || '今日次数已重置', 'success');
     loadAccounts(); loadStats();
   } catch (e) { toast('重置失败: ' + e.message, 'error'); }
 }

@@ -1,0 +1,95 @@
+name: Build Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-amd64
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - os: windows-latest
+            target: windows-arm64
+            goos: windows
+            goarch: arm64
+            ext: .exe
+          - os: ubuntu-latest
+            target: linux-amd64
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - os: ubuntu-latest
+            target: linux-arm64
+            goos: linux
+            goarch: arm64
+            ext: ""
+          - os: macos-latest
+            target: macos-amd64
+            goos: darwin
+            goarch: amd64
+            ext: ""
+          - os: macos-latest
+            target: macos-arm64
+            goos: darwin
+            goarch: arm64
+            ext: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: go build -ldflags="-s -w" -o cline-proxy-${{ matrix.target }}${{ matrix.ext }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cline-proxy-${{ matrix.target }}
+          path: cline-proxy-${{ matrix.target }}${{ matrix.ext }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: cline-proxy-*
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          TAG="v$(date +%Y_%m%d_%H%M)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Generated tag: $TAG"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          files: artifacts/cline-proxy-*/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
