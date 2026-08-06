@@ -40,25 +40,6 @@ go run . -start
 
 监听所有网卡会开放管理后台给同网设备，建议仅在可信局域网使用，并在系统防火墙中限制 3457 端口。
 
-### 构建脚本
-
-```powershell
-# 重建并重启（开发热更新：停进程 → 构建 Win x86 → 启动 → 打开浏览器）
-.\rebuild.ps1
-
-# 指定端口
-.\rebuild.ps1 -Port 3458
-
-# 只构建不启动
-.\rebuild.ps1 -NoStart
-
-# 构建不打开浏览器
-.\rebuild.ps1 -NoOpenBrowser
-
-# 多平台交叉编译（输出到 dist/）
-.\build.ps1 -Targets "windows/amd64","windows/arm64","linux/amd64","linux/arm64","darwin/amd64","darwin/arm64"
-```
-
 ### Docker 部署
 
 ```bash
