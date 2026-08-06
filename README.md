@@ -34,25 +34,6 @@ go run . -start
 
 启动后访问 http://127.0.0.1:3457/admin/ 进入管理后台。
 
-### 构建脚本
-
-```powershell
-# 重建并重启（开发热更新：停进程 → 构建 Win x86 → 启动 → 打开浏览器）
-.\rebuild.ps1
-
-# 指定端口
-.\rebuild.ps1 -Port 3458
-
-# 只构建不启动
-.\rebuild.ps1 -NoStart
-
-# 构建不打开浏览器
-.\rebuild.ps1 -NoOpenBrowser
-
-# 多平台交叉编译（输出到 dist/）
-.\build.ps1 -Targets "windows/amd64","windows/arm64","linux/amd64","linux/arm64","darwin/amd64","darwin/arm64"
-```
-
 ### Docker 部署
 
 ```bash
