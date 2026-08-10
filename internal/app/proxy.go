@@ -1,6 +1,8 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/cline"
+	"cline-go-proxy/internal/kit"
 	"bufio"
 	"bytes"
 	"encoding/json"
@@ -43,7 +45,7 @@ type chatRequest struct {
 	Extra               map[string]any  `json:"-"`
 }
 
-func startProxy(host string, port int) error {
+func StartProxy(host string, port int) error {
 	if strings.TrimSpace(host) == "" {
 		host = "0.0.0.0"
 	}
@@ -310,7 +312,7 @@ func startProxy(host string, port int) error {
 // initLogFile 将日志同时输出到控制台与 cline-proxy.log（追加模式），
 // 控制台窗口滚动内容有限，文件可完整保留所有日志。
 func initLogFile() {
-	path := resolveDataPath("cline-proxy.log")
+	path := kit.ResolveDataPath("cline-proxy.log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("  open log file failed: %v", err)
@@ -529,7 +531,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 		return nil, acc, fmt.Errorf("marshal body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", clineAPIBase+"/chat/completions", bytes.NewReader(bodyJSON))
+	req, err := http.NewRequest("POST", cline.ClineAPIBase+"/chat/completions", bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, acc, fmt.Errorf("create request: %w", err)
 	}
@@ -544,7 +546,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 	log.Printf("  upstream: account=%s stream=%v tools=%d msgs=%d max_tokens=%v effort=%v",
 		truncateEmail(acc.Email), stream, toolCount, getMsgCount(params), body["max_tokens"], body["reasoning_effort"])
 
-	resp, err := httpClient.Do(req)
+	resp, err := kit.HTTPClient.Do(req)
 	if err != nil {
 		// 网络错误：临时短冷却 5 分钟
 		markAccountCooldown(acc, "network error: "+err.Error(), 5*time.Minute)
@@ -557,7 +559,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 		if err := refreshAccountToken(acc); err == nil {
 			token = acc.AccessToken
 			req.Header = clineHeaders(token, sessionID)
-			resp, err = httpClient.Do(req)
+			resp, err = kit.HTTPClient.Do(req)
 			if err != nil {
 				return nil, acc, fmt.Errorf("upstream retry: %w", err)
 			}
@@ -583,7 +585,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 		resp.Body.Close()
 		// Mark account on cooldown on rate limits
 		if resp.StatusCode == 429 {
-			reason := truncate(string(bodyBytes), 500)
+			reason := kit.Truncate(string(bodyBytes), 500)
 			duration := parseInferenceCapDuration(string(bodyBytes))
 			if duration <= 0 {
 				duration = parseRetryAfter(resp.Header.Get("Retry-After"))
@@ -591,7 +593,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account,
 			markAccountCooldown(acc, "429: "+reason, duration)
 			log.Printf("  account %s cooldown %v (reason: %s)", truncateEmail(acc.Email), duration, reason)
 		}
-		return nil, acc, fmt.Errorf("API %d: %s", resp.StatusCode, truncate(string(bodyBytes), 500))
+		return nil, acc, fmt.Errorf("API %d: %s", resp.StatusCode, kit.Truncate(string(bodyBytes), 500))
 	}
 
 	bumpUsage(acc)
@@ -1086,7 +1088,7 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 					msgs = append(msgs, tr)
 					content, _ := tr["content"].(string)
 					id, _ := tr["tool_call_id"].(string)
-					log.Printf("  anthropic req: tool_result id=%s content_len=%d prefix=%s", id, len(content), truncate(content, 400))
+					log.Printf("  anthropic req: tool_result id=%s content_len=%d prefix=%s", id, len(content), kit.Truncate(content, 400))
 				}
 			} else {
 				content := strings.Join(textParts, "\n")
@@ -1153,7 +1155,7 @@ func parseToolArgs(raw string) (any, error) {
 			}
 		}
 	}
-	return nil, fmt.Errorf("invalid json: %s", truncate(raw, 120))
+	return nil, fmt.Errorf("invalid json: %s", kit.Truncate(raw, 120))
 }
 
 // extractToolSchemas 从 Anthropic 请求的 tools 定义中解析每个工具的 input_schema 属性集合，
@@ -1578,7 +1580,7 @@ func handleAnthropicStreamWithUsage(w http.ResponseWriter, upstream *http.Respon
 	}
 
 	var streamLog *os.File
-	if sf, err := os.OpenFile(resolveDataPath("cline-proxy-stream.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	if sf, err := os.OpenFile(kit.ResolveDataPath("cline-proxy-stream.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 		streamLog = sf
 	}
 	defer func() {
@@ -1640,7 +1642,7 @@ func handleAnthropicStreamWithUsage(w http.ResponseWriter, upstream *http.Respon
 		}
 		argsObj, err := parseToolArgs(acc.args)
 		if err != nil {
-			log.Printf("  tool args parse failed for %s: %v (raw: %s)", acc.name, err, truncate(acc.args, 300))
+			log.Printf("  tool args parse failed for %s: %v (raw: %s)", acc.name, err, kit.Truncate(acc.args, 300))
 			argsObj = map[string]any{}
 		}
 		if inputMap, ok := argsObj.(map[string]any); ok {
@@ -1930,7 +1932,7 @@ func freePort(port int) {
 	conn.Close()
 
 	// Try to kill the process using the port
-	cmd := execCommand("powershell", "-Command",
+	cmd := kit.ExecCommand("powershell", "-Command",
 		fmt.Sprintf(`$p=Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue; if($p){$p.OwningProcess | Sort-Object -Unique | ForEach-Object {Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue}}`, port))
 	_ = cmd.Run()
 	// 杀进程后确认端口确实释放，避免旧进程尚未退出时立刻竞争监听。

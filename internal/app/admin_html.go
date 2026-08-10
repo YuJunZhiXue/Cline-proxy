@@ -1,4 +1,4 @@
-package main
+package app
 
 const adminHTML = `<!DOCTYPE html>
 <html lang="zh-CN">

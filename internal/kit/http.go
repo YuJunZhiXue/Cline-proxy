@@ -1,4 +1,4 @@
-package main
+package kit
 
 import (
 	"bytes"
@@ -12,29 +12,29 @@ import (
 	"time"
 )
 
-var execCommand = exec.Command
+var ExecCommand = exec.Command
 
-var httpTransport = &http.Transport{
+var HTTPTransport = &http.Transport{
 	MaxIdleConns:        100,
 	MaxIdleConnsPerHost: 10,
 	IdleConnTimeout:     90 * time.Second,
 	DisableCompression:  false,
 }
 
-var httpClient = &http.Client{
-	Transport: httpTransport,
+var HTTPClient = &http.Client{
+	Transport: HTTPTransport,
 }
 
-func httpPostForm(rawURL string, form url.Values) (*http.Response, error) {
+func HTTPPostForm(rawURL string, form url.Values) (*http.Response, error) {
 	req, err := http.NewRequest("POST", rawURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	return httpClient.Do(req)
+	return HTTPClient.Do(req)
 }
 
-func httpPostJSON(rawURL string, body any) (*http.Response, error) {
+func HTTPPostJSON(rawURL string, body any) (*http.Response, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -44,10 +44,10 @@ func httpPostJSON(rawURL string, body any) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return httpClient.Do(req)
+	return HTTPClient.Do(req)
 }
 
-func readBody(resp *http.Response) string {
+func ReadBody(resp *http.Response) string {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Sprintf("<read error: %v>", err)
@@ -55,14 +55,14 @@ func readBody(resp *http.Response) string {
 	return string(data)
 }
 
-func truncate(s string, maxLen int) string {
+func Truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen] + "..."
 }
 
-func runCommand(name string, args ...string) error {
+func RunCommand(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	return cmd.Start()
 }

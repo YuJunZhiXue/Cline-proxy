@@ -1,6 +1,8 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/cline"
+	"cline-go-proxy/internal/kit"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -95,7 +97,7 @@ func handleAdminAccounts(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
 		return
 	}
-	accounts := listAccounts()
+	accounts := ListAccounts()
 	writeAPI(w, http.StatusOK, apiResponse{
 		Success: true,
 		Data: map[string]any{
@@ -134,7 +136,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate by refreshing
-	resp, err := refreshClineToken(req.RefreshToken)
+	resp, err := cline.RefreshClineToken(req.RefreshToken)
 	if err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid refreshToken: " + err.Error()})
 		return
@@ -149,7 +151,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 		Email:        req.Email,
 		RefreshToken: req.RefreshToken,
 		AccessToken:  "workos:" + resp.Data.AccessToken,
-		ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+		ExpiresAt:    cline.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 		Status:       "active",
 		CreatedAt:    time.Now(),
 	}
@@ -211,7 +213,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := workosDeviceAuth()
+	device, err := cline.WorkosDeviceAuth()
 	if err != nil {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
 		return
@@ -245,7 +247,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			expiresIn = 300
 		}
 
-		workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+		workosTok, err := cline.PollWorkosToken(device.DeviceCode, interval, expiresIn)
 		if err != nil {
 			oauthSessionsMu.Lock()
 			state.Error = err.Error()
@@ -255,7 +257,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+		reg, err := cline.RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 		if err != nil {
 			oauthSessionsMu.Lock()
 			state.Error = err.Error()
@@ -266,16 +268,16 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 		}
 
 		email := "unknown"
-		if cline.Data.UserInfo != nil && cline.Data.UserInfo.Email != "" {
-			email = cline.Data.UserInfo.Email
+		if reg.Data.UserInfo != nil && reg.Data.UserInfo.Email != "" {
+			email = reg.Data.UserInfo.Email
 		}
 
 		acc := &Account{
 			AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 			Email:        email,
-			RefreshToken: cline.Data.RefreshToken,
-			AccessToken:  "workos:" + cline.Data.AccessToken,
-			ExpiresAt:    parseExpiry(cline.Data.ExpiresAt) - 60000,
+			RefreshToken: reg.Data.RefreshToken,
+			AccessToken:  "workos:" + reg.Data.AccessToken,
+			ExpiresAt:    cline.ParseExpiry(reg.Data.ExpiresAt) - 60000,
 			Status:       "active",
 			CreatedAt:    time.Now(),
 		}
@@ -375,9 +377,9 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 		// Try to use the cookie as a refresh token directly (common format)
 		if strings.HasPrefix(line, "workos:") || len(line) > 20 {
 			token := strings.TrimPrefix(line, "workos:")
-			resp, err := refreshClineToken(token)
+			resp, err := cline.RefreshClineToken(token)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("token %s...: %v", truncate(token, 16), err))
+				errors = append(errors, fmt.Sprintf("token %s...: %v", kit.Truncate(token, 16), err))
 				continue
 			}
 			email := req.Email
@@ -390,7 +392,7 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 				Email:        email,
 				RefreshToken: token,
 				AccessToken:  "workos:" + resp.Data.AccessToken,
-				ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+				ExpiresAt:    cline.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 				Status:       "active",
 				CreatedAt:    time.Now(),
 			}
@@ -450,7 +452,7 @@ func handleBatchImport(w http.ResponseWriter, r *http.Request) {
 		if t.RefreshToken == "" {
 			continue
 		}
-		resp, err := refreshClineToken(t.RefreshToken)
+		resp, err := cline.RefreshClineToken(t.RefreshToken)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", t.Email, err))
 			continue
@@ -464,7 +466,7 @@ func handleBatchImport(w http.ResponseWriter, r *http.Request) {
 			Email:        email,
 			RefreshToken: t.RefreshToken,
 			AccessToken:  "workos:" + resp.Data.AccessToken,
-			ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+			ExpiresAt:    cline.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 			Status:       "active",
 			CreatedAt:    time.Now(),
 		}
@@ -665,7 +667,7 @@ func testAccount(acc *Account) (map[string]any, string) {
 	}
 	bodyJSON, _ := json.Marshal(probeBody)
 
-	req, err := http.NewRequest("POST", clineAPIBase+"/chat/completions", bytes.NewReader(bodyJSON))
+	req, err := http.NewRequest("POST", cline.ClineAPIBase+"/chat/completions", bytes.NewReader(bodyJSON))
 	if err != nil {
 		return map[string]any{
 			"accountId": acc.AccountID,
@@ -676,7 +678,7 @@ func testAccount(acc *Account) (map[string]any, string) {
 	}
 	req.Header = clineHeaders(token, sessionID)
 
-	resp, err := httpClient.Do(req)
+	resp, err := kit.HTTPClient.Do(req)
 	if err != nil {
 		// 网络错误：5 分钟短冷却
 		markAccountCooldown(acc, "network error: "+err.Error(), 5*time.Minute)
@@ -699,7 +701,7 @@ func testAccount(acc *Account) (map[string]any, string) {
 		if duration <= 0 {
 			duration = parseRetryAfter(resp.Header.Get("Retry-After"))
 		}
-		reason := truncate(bodyStr, 500)
+		reason := kit.Truncate(bodyStr, 500)
 		markAccountCooldown(acc, "429: "+reason, duration)
 		log.Printf("Test hit 429 on %s, cooldown %v", truncateEmail(acc.Email), duration)
 		return map[string]any{
@@ -735,7 +737,7 @@ func testAccount(acc *Account) (map[string]any, string) {
 			"accountId":  acc.AccountID,
 			"email":      acc.Email,
 			"status":     "error",
-			"reason":     fmt.Sprintf("API %d: %s", resp.StatusCode, truncate(bodyStr, 300)),
+			"reason":     fmt.Sprintf("API %d: %s", resp.StatusCode, kit.Truncate(bodyStr, 300)),
 			"httpStatus": resp.StatusCode,
 		}, "error"
 	}

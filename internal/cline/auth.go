@@ -1,6 +1,7 @@
-package main
+package cline
 
 import (
+	"cline-go-proxy/internal/kit"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,7 +16,7 @@ const (
 	workosClientID       = "client_01K3A541FN8TA3EPPHTD2325AR"
 	workosDeviceAuthURL  = "https://api.workos.com/user_management/authorize/device"
 	workosAuthenticateURL = "https://api.workos.com/user_management/authenticate"
-	clineAPIBase         = "https://api.cline.bot/api/v1"
+	ClineAPIBase         = "https://api.cline.bot/api/v1"
 )
 
 type credentials struct {
@@ -65,15 +66,15 @@ var (
 )
 
 func init() {
-	credentialsPath = findCredentialsFile()
+	credentialsPath = FindCredentialsFile()
 }
 
-func findCredentialsFile() string {
+func FindCredentialsFile() string {
 	// First, try next to the executable
 	exe, err := os.Executable()
 	if err == nil {
 		p := filepath.Join(filepath.Dir(exe), ".cline-credentials.json")
-		if fileExists(p) {
+		if kit.FileExists(p) {
 			return p
 		}
 	}
@@ -81,7 +82,7 @@ func findCredentialsFile() string {
 	pwd, err := os.Getwd()
 	if err == nil {
 		p := filepath.Join(pwd, ".cline-credentials.json")
-		if fileExists(p) {
+		if kit.FileExists(p) {
 			return p
 		}
 	}
@@ -93,12 +94,8 @@ func findCredentialsFile() string {
 	return filepath.Join(pwd, ".cline-credentials.json")
 }
 
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
 
-func loadCredentials() *credentials {
+func LoadCredentials() *credentials {
 	data, err := os.ReadFile(credentialsPath)
 	if err != nil {
 		return nil
@@ -110,7 +107,7 @@ func loadCredentials() *credentials {
 	return &c
 }
 
-func saveCredentials(rt string) {
+func SaveCredentials(rt string) {
 	c := credentials{RefreshToken: rt}
 	data, _ := json.MarshalIndent(c, "", "  ")
 	if err := os.WriteFile(credentialsPath, data, 0600); err != nil {
@@ -120,17 +117,17 @@ func saveCredentials(rt string) {
 	log.Printf("Credentials saved to %s", credentialsPath)
 }
 
-func workosDeviceAuth() (*deviceAuthResp, error) {
+func WorkosDeviceAuth() (*deviceAuthResp, error) {
 	form := url.Values{"client_id": {workosClientID}}
-	resp, err := httpPostForm(workosDeviceAuthURL, form)
+	resp, err := kit.HTTPPostForm(workosDeviceAuthURL, form)
 	if err != nil {
 		return nil, fmt.Errorf("workos device auth: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body := readBody(resp)
-		return nil, fmt.Errorf("workos device auth failed: %d %s", resp.StatusCode, truncate(body, 200))
+		body := kit.ReadBody(resp)
+		return nil, fmt.Errorf("workos device auth failed: %d %s", resp.StatusCode, kit.Truncate(body, 200))
 	}
 
 	var d deviceAuthResp
@@ -140,7 +137,7 @@ func workosDeviceAuth() (*deviceAuthResp, error) {
 	return &d, nil
 }
 
-func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateResp, error) {
+func PollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateResp, error) {
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	currentInterval := interval
 	if currentInterval < 5 {
@@ -153,7 +150,7 @@ func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateR
 			"device_code": {deviceCode},
 			"client_id":   {workosClientID},
 		}
-		resp, err := httpPostForm(workosAuthenticateURL, form)
+		resp, err := kit.HTTPPostForm(workosAuthenticateURL, form)
 		if err != nil {
 			return nil, fmt.Errorf("workos poll: %w", err)
 		}
@@ -186,20 +183,20 @@ func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateR
 	return nil, fmt.Errorf("device authorization expired (timeout)")
 }
 
-func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, error) {
+func RegisterWithCline(workosAccess, workosRefresh string) (*clineAuthResp, error) {
 	body := map[string]string{
 		"accessToken":  workosAccess,
 		"refreshToken": workosRefresh,
 	}
-	resp, err := httpPostJSON(clineAPIBase+"/auth/register", body)
+	resp, err := kit.HTTPPostJSON(ClineAPIBase+"/auth/register", body)
 	if err != nil {
 		return nil, fmt.Errorf("cline register: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		b := readBody(resp)
-		return nil, fmt.Errorf("cline register failed: %d %s", resp.StatusCode, truncate(b, 200))
+		b := kit.ReadBody(resp)
+		return nil, fmt.Errorf("cline register failed: %d %s", resp.StatusCode, kit.Truncate(b, 200))
 	}
 
 	var c clineAuthResp
@@ -209,12 +206,12 @@ func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, erro
 	return &c, nil
 }
 
-func refreshClineToken(refreshToken string) (*clineRefreshResp, error) {
+func RefreshClineToken(refreshToken string) (*clineRefreshResp, error) {
 	body := map[string]string{
 		"refreshToken": refreshToken,
 		"grantType":    "refresh_token",
 	}
-	resp, err := httpPostJSON(clineAPIBase+"/auth/refresh", body)
+	resp, err := kit.HTTPPostJSON(ClineAPIBase+"/auth/refresh", body)
 	if err != nil {
 		return nil, fmt.Errorf("cline refresh: %w", err)
 	}
@@ -231,22 +228,22 @@ func refreshClineToken(refreshToken string) (*clineRefreshResp, error) {
 	return &c, nil
 }
 
-func getToken() (string, error) {
+func GetToken() (string, error) {
 	if cachedToken != "" && time.Now().UnixMilli() < cachedExpiry {
 		return cachedToken, nil
 	}
 
-	creds := loadCredentials()
+	creds := LoadCredentials()
 	if creds != nil && creds.RefreshToken != "" {
-		resp, err := refreshClineToken(creds.RefreshToken)
+		resp, err := RefreshClineToken(creds.RefreshToken)
 		if err == nil && resp.Data.AccessToken != "" {
 			cachedToken = "workos:" + resp.Data.AccessToken
 			cachedRefreshTok = resp.Data.RefreshToken
 			if cachedRefreshTok == "" {
 				cachedRefreshTok = creds.RefreshToken
 			}
-			cachedExpiry = parseExpiry(resp.Data.ExpiresAt) - 60000
-			saveCredentials(cachedRefreshTok)
+			cachedExpiry = ParseExpiry(resp.Data.ExpiresAt) - 60000
+			SaveCredentials(cachedRefreshTok)
 			return cachedToken, nil
 		}
 		log.Printf("Token refresh failed: %v", err)
@@ -254,7 +251,7 @@ func getToken() (string, error) {
 	return "", fmt.Errorf("no valid credentials. Run with --login flag first")
 }
 
-func parseExpiry(exp any) int64 {
+func ParseExpiry(exp any) int64 {
 	switch v := exp.(type) {
 	case float64:
 		return int64(v)
@@ -275,10 +272,10 @@ func parseExpiry(exp any) int64 {
 	return 0
 }
 
-func doLogin() error {
+func DoLogin() error {
 	fmt.Println("\nStarting Cline OAuth login...")
 
-	device, err := workosDeviceAuth()
+	device, err := WorkosDeviceAuth()
 	if err != nil {
 		return err
 	}
@@ -294,7 +291,7 @@ func doLogin() error {
 	fmt.Println("  3. Log in with Google, GitHub, or email")
 
 	// Try to open browser automatically
-	_ = openBrowser(authURL)
+	_ = OpenBrowser(authURL)
 
 	fmt.Println("  Waiting for authorization...")
 
@@ -307,41 +304,41 @@ func doLogin() error {
 		expiresIn = 300
 	}
 
-	workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+	workosTok, err := PollWorkosToken(device.DeviceCode, interval, expiresIn)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("  WorkOS authorized. Registering with Cline...")
 
-	cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+	reg, err := RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 	if err != nil {
 		return err
 	}
 
-	if cline.Data.RefreshToken == "" {
+	if reg.Data.RefreshToken == "" {
 		return fmt.Errorf("cline registration missing refresh token")
 	}
 
-	saveCredentials(cline.Data.RefreshToken)
-	cachedToken = "workos:" + cline.Data.AccessToken
-	cachedRefreshTok = cline.Data.RefreshToken
-	cachedExpiry = parseExpiry(cline.Data.ExpiresAt) - 60000
+	SaveCredentials(reg.Data.RefreshToken)
+	cachedToken = "workos:" + reg.Data.AccessToken
+	cachedRefreshTok = reg.Data.RefreshToken
+	cachedExpiry = ParseExpiry(reg.Data.ExpiresAt) - 60000
 
 	email := "unknown"
-	if cline.Data.UserInfo != nil && cline.Data.UserInfo.Email != "" {
-		email = cline.Data.UserInfo.Email
+	if reg.Data.UserInfo != nil && reg.Data.UserInfo.Email != "" {
+		email = reg.Data.UserInfo.Email
 	}
 	fmt.Printf("  Login successful! Account: %s\n", email)
 	return nil
 }
 
-func openBrowser(url string) error {
+func OpenBrowser(url string) error {
 	var cmd string
 	var args []string
 
 	switch {
-	case isWindows():
+	case IsWindows():
 		cmd = "rundll32"
 		args = []string{"url.dll,FileProtocolHandler", url}
 	default:
@@ -362,9 +359,9 @@ func openBrowser(url string) error {
 		return fmt.Errorf("no browser opener found")
 	}
 
-	return runCommand(cmd, args...)
+	return kit.RunCommand(cmd, args...)
 }
 
-func isWindows() bool {
+func IsWindows() bool {
 	return strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
 }

@@ -1,11 +1,12 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/cline"
+	"cline-go-proxy/internal/kit"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -18,30 +19,11 @@ var (
 )
 
 func init() {
-	poolPath = resolveDataPath(".cline-accounts.json")
+	poolPath = kit.ResolveDataPath(".cline-accounts.json")
 }
 
-// resolveDataPath 数据文件路径解析：优先可执行文件目录，其次当前工作目录。
+// kit.ResolveDataPath 数据文件路径解析：优先可执行文件目录，其次当前工作目录。
 // go run 运行时编译产物在临时目录，此时应回退到工作目录（项目根）查找数据文件。
-func resolveDataPath(filename string) string {
-	candidates := []string{}
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(exe), filename))
-	}
-	if pwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(pwd, filename))
-	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c
-		}
-	}
-	// 都不存在：默认写到当前工作目录（go run 场景），保证数据落盘位置稳定
-	if len(candidates) > 1 {
-		return candidates[1]
-	}
-	return candidates[0]
-}
 
 func loadPool() *AccountPool {
 	poolMu.Lock()
@@ -148,7 +130,7 @@ func getAccountByID(accountID string) *Account {
 }
 
 func refreshAccountToken(acc *Account) error {
-	resp, err := refreshClineToken(acc.RefreshToken)
+	resp, err := cline.RefreshClineToken(acc.RefreshToken)
 	if err != nil {
 		poolMu.Lock()
 		acc.Status = "expired"
@@ -162,7 +144,7 @@ func refreshAccountToken(acc *Account) error {
 	if resp.Data.RefreshToken != "" {
 		acc.RefreshToken = resp.Data.RefreshToken
 	}
-	acc.ExpiresAt = parseExpiry(resp.Data.ExpiresAt) - 60000
+	acc.ExpiresAt = cline.ParseExpiry(resp.Data.ExpiresAt) - 60000
 	acc.Status = "active"
 	savePoolLocked()
 	poolMu.Unlock()
@@ -227,7 +209,7 @@ func ensureAccountToken(acc *Account) (string, error) {
 	return acc.AccessToken, nil
 }
 
-func listAccounts() []*Account {
+func ListAccounts() []*Account {
 	p := loadPool()
 	poolMu.Lock()
 
@@ -380,10 +362,10 @@ func describePoolStatus() string {
 	return s
 }
 
-func addAccountFromDeviceAuth() (*Account, error) {
+func AddAccountFromDeviceAuth() (*Account, error) {
 	fmt.Println("\n=== Add New Cline Account (OAuth) ===")
 
-	device, err := workosDeviceAuth()
+	device, err := cline.WorkosDeviceAuth()
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +380,7 @@ func addAccountFromDeviceAuth() (*Account, error) {
 	fmt.Println("  2. Enter code: " + device.UserCode)
 	fmt.Println("  3. Log in with Google, GitHub, or email")
 
-	_ = openBrowser(authURL)
+	_ = cline.OpenBrowser(authURL)
 	fmt.Println("  Waiting for authorization...")
 
 	interval := device.Interval
@@ -410,33 +392,33 @@ func addAccountFromDeviceAuth() (*Account, error) {
 		expiresIn = 300
 	}
 
-	workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+	workosTok, err := cline.PollWorkosToken(device.DeviceCode, interval, expiresIn)
 	if err != nil {
 		return nil, err
 	}
 
 	fmt.Println("  WorkOS authorized. Registering with Cline...")
 
-	cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+	reg, err := cline.RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	if cline.Data.RefreshToken == "" {
+	if reg.Data.RefreshToken == "" {
 		return nil, fmt.Errorf("cline registration missing refresh token")
 	}
 
 	email := "unknown"
-	if cline.Data.UserInfo != nil && cline.Data.UserInfo.Email != "" {
-		email = cline.Data.UserInfo.Email
+	if reg.Data.UserInfo != nil && reg.Data.UserInfo.Email != "" {
+		email = reg.Data.UserInfo.Email
 	}
 
 	acc := &Account{
 		AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 		Email:        email,
-		RefreshToken: cline.Data.RefreshToken,
-		AccessToken:  "workos:" + cline.Data.AccessToken,
-		ExpiresAt:    parseExpiry(cline.Data.ExpiresAt) - 60000,
+		RefreshToken: reg.Data.RefreshToken,
+		AccessToken:  "workos:" + reg.Data.AccessToken,
+		ExpiresAt:    cline.ParseExpiry(reg.Data.ExpiresAt) - 60000,
 		Status:       "active",
 		CreatedAt:    time.Now(),
 	}

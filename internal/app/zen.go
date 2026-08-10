@@ -1,6 +1,7 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/kit"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -270,7 +271,7 @@ func isRateLimited(status int, body string) bool {
 }
 
 func loadZenConfig() *zenConfigData {
-	path := resolveDataPath(".zen-config.json")
+	path := kit.ResolveDataPath(".zen-config.json")
 	cfg := defaultZenConfig()
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, cfg); err != nil {
@@ -290,7 +291,7 @@ func saveZenConfig() {
 	zenConfigMu.Lock()
 	defer zenConfigMu.Unlock()
 	data, _ := json.MarshalIndent(zenConfig, "", "  ")
-	if err := os.WriteFile(resolveDataPath(".zen-config.json"), data, 0600); err != nil {
+	if err := os.WriteFile(kit.ResolveDataPath(".zen-config.json"), data, 0600); err != nil {
 		log.Printf("zen config save failed: %v", err)
 	}
 }
@@ -370,7 +371,7 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, int, error)
 			return nil, rateLimited, fmt.Errorf("create zen request: %w", err)
 		}
 		// 客户端身份轮换: 每次请求模拟全新 opencode 客户端,规避 session/UA 维度限流
-		sess, user, ua := freshZenIdentity()
+		sess, user, ua := kit.FreshZenIdentity()
 		req.Header.Set("Authorization", "Bearer "+cfg.Key)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", ua)
@@ -383,14 +384,14 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, int, error)
 			req.Header.Set("x-opencode-model", m.ID)
 		}
 		log.Printf("  zen upstream: model=%s stream=%v msgs=%d via=%s attempt=%d session=%s",
-			body["model"], stream, getMsgCount(params), describeZenProxy(), attempt+1, truncate(sess, 24))
+			body["model"], stream, getMsgCount(params), describeZenProxy(), attempt+1, kit.Truncate(sess, 24))
 
 		resp, err := getZenHTTPClient().Do(req)
 		if err != nil {
 			// 网络错误:退避重试(不计入故障转移,瞬时可恢复)
 			if attempt < retries {
 				log.Printf("  zen network error (%v), retry %d/%d after %v", err, attempt+1, retries, delay)
-				time.Sleep(withRetryJitter(delay))
+				time.Sleep(kit.WithRetryJitter(delay))
 				delay *= 2
 				continue
 			}
@@ -401,9 +402,9 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, int, error)
 			return resp, rateLimited, nil
 		}
 
-		bodyBytes := readBody(resp)
+		bodyBytes := kit.ReadBody(resp)
 		resp.Body.Close()
-		reason := fmt.Sprintf("zen API %d: %s", resp.StatusCode, truncate(bodyBytes, 500))
+		reason := fmt.Sprintf("zen API %d: %s", resp.StatusCode, kit.Truncate(bodyBytes, 500))
 
 		if isRateLimited(resp.StatusCode, bodyBytes) {
 			rateLimited++
@@ -422,7 +423,7 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, int, error)
 					wait = retryAfter
 				}
 				log.Printf("  zen rate limited (%d), retry %d/%d after %v", resp.StatusCode, attempt+1, retries, wait)
-				time.Sleep(withRetryJitter(wait))
+				time.Sleep(kit.WithRetryJitter(wait))
 				delay *= 2
 				continue
 			}
@@ -446,7 +447,7 @@ func describeZenProxy() string {
 		idx = 0
 	}
 	idx %= len(proxies)
-	return fmt.Sprintf("proxy[%d]=%s", idx+1, truncate(maskProxyURL(proxies[idx]), 60))
+	return fmt.Sprintf("proxy[%d]=%s", idx+1, kit.Truncate(maskProxyURL(proxies[idx]), 60))
 }
 
 func zenModelList() []map[string]any {

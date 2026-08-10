@@ -1,4 +1,4 @@
-package main
+package kit
 
 import (
 	"crypto/rand"
@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-func withRetryJitter(delay time.Duration) time.Duration {
+func WithRetryJitter(delay time.Duration) time.Duration {
 	if delay <= 0 {
 		return delay
 	}
 	// 在退避时间上增加 0%~25% 抖动，避免多个请求同时重试。
-	jitter := time.Duration(float64(delay) * float64(randIntn(26)) / 100)
+	jitter := time.Duration(float64(delay) * float64(RandIntn(26)) / 100)
 	const maxDuration = time.Duration(1<<63 - 1)
 	if delay > maxDuration-jitter {
 		return maxDuration
@@ -26,7 +26,7 @@ func withRetryJitter(delay time.Duration) time.Duration {
 // 每次请求生成全新身份 = 每次都是"新客户端",从源头规避身份维度的限流。
 // ============================================================================
 
-var zenUserAgents = []string{
+var ZenUserAgents = []string{
 	"opencode/latest/1.18.14/cli",
 	"opencode/latest/1.18.13/cli",
 	"opencode/1.18.14/cli",
@@ -37,13 +37,13 @@ var zenUserAgents = []string{
 	"opencode/latest/1.18.13/desktop",
 }
 
-func randHex(n int) string {
+func RandHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-func randIntn(n int) int {
+func RandIntn(n int) int {
 	if n <= 0 {
 		return 0
 	}
@@ -56,9 +56,9 @@ func randIntn(n int) int {
 	return v % n
 }
 
-// freshZenIdentity 生成一组全新客户端身份 (session, request, user-agent)
-func freshZenIdentity() (string, string, string) {
-	return "sess_" + randHex(16),
-		"user_" + randHex(8),
-		zenUserAgents[randIntn(len(zenUserAgents))]
+// FreshZenIdentity 生成一组全新客户端身份 (session, request, user-agent)
+func FreshZenIdentity() (string, string, string) {
+	return "sess_" + RandHex(16),
+		"user_" + RandHex(8),
+		ZenUserAgents[RandIntn(len(ZenUserAgents))]
 }

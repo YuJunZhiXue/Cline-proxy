@@ -1,6 +1,7 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/cline"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -41,7 +42,7 @@ const (
 	modelsSyncTimeout     = 25 * time.Second
 )
 
-const recommendedModelsURL = clineAPIBase + "/ai/cline/recommended-models"
+const recommendedModelsURL = cline.ClineAPIBase + "/ai/cline/recommended-models"
 
 func seedModelCandidates() []*ModelInfo {
 	return []*ModelInfo{

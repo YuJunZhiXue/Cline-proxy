@@ -1,6 +1,7 @@
-package main
+package app
 
 import (
+	"cline-go-proxy/internal/kit"
 	"encoding/json"
 	"log"
 	"os"
@@ -77,7 +78,7 @@ func (t *zenStatsTracker) finish(ok bool, status int) {
 
 func initStats() {
 	statsFileInit.Do(func() {
-		f, err := os.OpenFile(resolveDataPath("zen-stats.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err := os.OpenFile(kit.ResolveDataPath("zen-stats.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			log.Printf("zen stats file open failed: %v", err)
 			return
@@ -103,7 +104,7 @@ func newZenStatsAgg() *zenStatsAgg {
 // loadStatsFromFile 从 JSONL 重建累计统计(仅今日的计入今日)
 func loadStatsFromFile() *zenStatsAgg {
 	agg := newZenStatsAgg()
-	data, err := os.ReadFile(resolveDataPath("zen-stats.jsonl"))
+	data, err := os.ReadFile(kit.ResolveDataPath("zen-stats.jsonl"))
 	if err != nil {
 		return nil
 	}
