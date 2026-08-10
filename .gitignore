@@ -12,5 +12,8 @@ cline-proxy-*
 
 # Local data
 .cline-accounts.json
+.zen-config.json
+zen-stats.jsonl
+cline-proxy.log
 data/
 override.md
