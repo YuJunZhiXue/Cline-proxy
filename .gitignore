@@ -19,3 +19,6 @@ cline-proxy.log
 cline-proxy-stream.log
 data/
 override.md
+# Local debug tool (kept locally, not uploaded)
+capture.go
+capture-logs/

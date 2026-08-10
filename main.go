@@ -13,7 +13,6 @@ import (
 
 func main() {
 	loginMode := flag.Bool("login", false, "Run OAuth device login flow and add account to pool")
-	captureMode := flag.Bool("capture", false, "Run interactive OAuth capture (records ALL traffic)")
 	host := flag.String("host", "0.0.0.0", "Listen host (0.0.0.0 allows LAN access)")
 	port := flag.Int("port", 3457, "Proxy server port")
 	addAccount := flag.Bool("add-account", false, "Add a new account via OAuth to the pool")
@@ -23,13 +22,6 @@ func main() {
 
 	if *startMode {
 		buildAndStart(*host, *port)
-		return
-	}
-
-	if *captureMode {
-		if err := doFullCapture(); err != nil {
-			log.Fatalf("Capture failed: %v", err)
-		}
 		return
 	}
 
