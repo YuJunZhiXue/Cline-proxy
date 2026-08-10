@@ -243,6 +243,10 @@ func listAccounts() []*Account {
 			a.UsageDate = usageDate
 			a.UsageCountToday = 0
 		}
+		if a.TokensDate != usageDate {
+			a.TokensDate = usageDate
+			a.TokensToday = 0
+		}
 	}
 	result := make([]*Account, len(p.Accounts))
 	for i, a := range p.Accounts {
@@ -255,6 +259,9 @@ func listAccounts() []*Account {
 			UsageCount:      a.UsageCount,
 			UsageCountToday: a.UsageCountToday,
 			UsageDate:       a.UsageDate,
+			TokensTotal:     a.TokensTotal,
+			TokensToday:     a.TokensToday,
+			TokensDate:      a.TokensDate,
 			CreatedAt:       a.CreatedAt,
 			CooldownUntil:   a.CooldownUntil,
 			LastReason:     a.LastReason,
@@ -311,6 +318,27 @@ func resetTodayUsage(acc *Account) {
 	poolMu.Lock()
 	acc.UsageDate = time.Now().Format("2006-01-02")
 	acc.UsageCountToday = 0
+	acc.TokensDate = time.Now().Format("2006-01-02")
+	acc.TokensToday = 0
+	savePoolLocked()
+	poolMu.Unlock()
+}
+
+// recordAccountTokens 记录账号本次请求消耗的 token（prompt+completion），
+// 自动处理跨日重置，累计值不重置。tokens<=0 时忽略。
+func recordAccountTokens(acc *Account, tokens int64) {
+	if acc == nil || tokens <= 0 {
+		return
+	}
+
+	poolMu.Lock()
+	today := time.Now().Format("2006-01-02")
+	if acc.TokensDate != today {
+		acc.TokensDate = today
+		acc.TokensToday = 0
+	}
+	acc.TokensToday += tokens
+	acc.TokensTotal += tokens
 	savePoolLocked()
 	poolMu.Unlock()
 }

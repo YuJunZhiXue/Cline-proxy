@@ -13,6 +13,9 @@ type Account struct {
 	UsageCount    int64     `json:"usageCount"`             // 本地累计成功调用次数
 	UsageCountToday int64   `json:"usageCountToday"`       // 本地今日成功调用次数
 	UsageDate     string    `json:"usageDate"`             // 本地计数日期 YYYY-MM-DD，跨日自动重置
+	TokensTotal   int64     `json:"tokensTotal"`           // 本地累计 token 消耗（prompt+completion）
+	TokensToday   int64     `json:"tokensToday"`           // 本地今日 token 消耗
+	TokensDate    string    `json:"tokensDate"`            // 今日 token 计数日期 YYYY-MM-DD，跨日自动重置
 	CreatedAt     time.Time `json:"createdAt"`
 	CooldownUntil time.Time `json:"cooldownUntil,omitempty"` // 预计冷却结束时间
 	LastReason    string    `json:"lastReason,omitempty"`    // 最后一次进入冷却/失效的原因

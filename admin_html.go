@@ -105,6 +105,7 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 <div class="nav-item" data-tab="accounts"><span>👤</span> 账号管理</div>
 <div class="nav-item" data-tab="import"><span>📥</span> 导入账号</div>
 <div class="nav-item" data-tab="settings"><span>⚙️</span> 设置</div>
+<div class="nav-item" data-tab="opencode"><span>🌐</span> opencode 免费模型</div>
 <div style="margin-top:auto;padding:16px;font-size:12px;color:var(--text2)">
   <div>管理面板: <a href="/admin/" style="color:var(--accent)">/admin/</a></div>
   <div>API 地址: <span id="footerApiAddr">http://127.0.0.1:3457</span></div>
@@ -142,13 +143,13 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
   </div>
 </div>
 <div style="margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text2);font-size:12px">
-  ℹ️ 次数为<strong style="color:var(--text)">本代理本地统计</strong>：记录该账号成功转发到 Cline 上游的调用次数，不是 Cline 官方免费额度；官方额度以 Cline 上游返回的限制和恢复时间为准。
+  ℹ️ <strong style="color:var(--text)">Tokens</strong>为本代理本地统计（输入+输出，上游返回 usage 时精确，否则按请求体估算），用于估算离官方限流还有多远；⚡ 测试按钮发起真实探测请求；↻ 重置按钮会<strong style="color:var(--text)">探测上游限流状态</strong>：若上游仍限流则保持冷却并提示恢复时间，探测通过才解除冷却并重置今日统计。
 </div>
 <div class="section">
   <div class="section-body" style="padding:0">
     <table>
       <thead>
-        <tr><th>邮箱</th><th>状态</th><th title="本代理本地统计，不代表官方免费额度">本地今日/累计调用</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
+        <tr><th>邮箱</th><th>状态</th><th title="本代理本地统计，不代表官方免费额度">今日/累计 Tokens</th><th>最后使用</th><th>创建时间</th><th>操作</th></tr>
       </thead>
       <tbody id="accountTableBody">
         <tr><td colspan="6" class="empty">加载中...</td></tr>
@@ -308,6 +309,95 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 </div>
 </div>
 
+<div id="tab-opencode" class="tab-panel" style="display:none">
+<h2>🌐 opencode 免费模型（统一网关）</h2>
+
+<div class="section">
+  <div class="section-title">🔄 上游配置</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>启用 opencode 上游</label>
+        <select id="ocEnabled"><option value="true">开启</option><option value="false">关闭</option></select>
+      </div>
+      <div class="field"><label>API Key</label><input type="text" id="ocKey" placeholder="public"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Base URL</label><input type="text" id="ocBaseURL" placeholder="https://opencode.ai/zen/v1"></div>
+      <div class="field"><label>代理策略</label>
+        <select id="ocStrategy"><option value="round_robin">轮询 round_robin</option><option value="random">随机 random</option><option value="fill">固定 fill</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>代理列表</label>
+        <textarea id="ocProxies" rows="3" style="font-family:monospace" placeholder="每行一个: http://user:pass@host:port 或 socks5://host:port"></textarea>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>代理冷却</label><span id="ocCooldownInfo" style="font-size:12px;color:var(--text2)">-</span></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存配置</button></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">🛡️ 限流防御</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>最大并发</label><input type="text" id="ocMaxConc" placeholder="8"></div>
+      <div class="field"><label>限流重试</label><input type="text" id="ocRetries" placeholder="3"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>故障转移</label>
+        <select id="ocFailover"><option value="true">开启(切 cline 池)</option><option value="false">关闭</option></select>
+      </div>
+      <div class="field"><label>失败阈值</label><input type="text" id="ocFailoverCount" placeholder="3"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>转移窗口(分钟)</label><input type="text" id="ocFailoverMinutes" placeholder="5"></div>
+      <div class="field"><label>当前状态</label><span id="ocFailoverInfo" style="font-size:12px">-</span></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存限流配置</button></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">🗜️ 上下文压缩（opencode 官方机制）</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>自动压缩</label>
+        <select id="ocCompactAuto"><option value="true">开启</option><option value="false">关闭</option></select>
+      </div>
+      <div class="field"><label>预留缓冲</label><input type="text" id="ocCompactBuffer" placeholder="20000"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>尾部保留</label><input type="text" id="ocKeepTokens" placeholder="8000"></div>
+      <div class="field"><label>摘要模型</label><input type="text" id="ocSummaryModel" placeholder="留空=同请求模型"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>摘要上限</label><input type="text" id="ocMaxSummary" placeholder="4096"></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存压缩配置</button></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">🧠 opencode 模型列表
+    <button class="btn btn-sm" onclick="refreshOcModels()">🔄 手动同步</button>
+  </div>
+  <div class="section-body" style="padding:0">
+    <div id="ocModelsList" style="padding:12px">加载中...</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">📊 opencode 统计</div>
+  <div class="section-body">
+    <div id="ocStatsBox"></div>
+    <div id="ocModelStatsBox" style="margin-top:12px"></div>
+  </div>
+</div>
+</div>
+
 </div>
 </div>
 
@@ -341,6 +431,13 @@ applyTheme(getTheme());
 
 const _ = id => document.getElementById(id);
 const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
+const fmtNum = n => (n || 0).toLocaleString('zh-CN');
+const fmtTokens = n => {
+  n = n || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+};
 if (window.location.host) _('footerApiAddr').textContent = 'http://' + window.location.host;
 
 function toast(msg, t, duration) {
@@ -363,6 +460,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
     if (el.dataset.tab === 'dashboard') { loadStats(); loadAccounts(); }
     if (el.dataset.tab === 'accounts') loadAccounts();
     if (el.dataset.tab === 'settings') { loadKeys(); loadModels(); loadConfig(); }
+    if (el.dataset.tab === 'opencode') { loadOcConfig(); loadOcModels(); loadOcStats(); }
   });
 });
 
@@ -375,6 +473,7 @@ function switchTab(name) {
   if (name === 'dashboard') { loadStats(); loadAccounts(); }
   if (name === 'accounts') loadAccounts();
   if (name === 'settings') { loadKeys(); loadModels(); }
+  if (name === 'opencode') { loadOcConfig(); loadOcModels(); loadOcStats(); }
 }
 
 // 导入子标签
@@ -434,12 +533,12 @@ async function loadAccounts() {
       return '<tr>' +
         '<td>' + esc(a.email) + '</td>' +
         '<td><span class="status ' + a.status + '"><span class="status-dot ' + a.status + '"></span>' + (sn[a.status] || a.status) + '</span>' + statusExtra + '</td>' +
-          '<td title="本代理本地成功转发次数，不代表官方免费额度">' + (a.usageCountToday || 0) + ' / ' + (a.usageCount || 0) + '</td>' +
+          '<td title="今日 ' + fmtNum(a.tokensToday) + ' / 累计 ' + fmtNum(a.tokensTotal) + ' tokens（上游返回 usage 时精确，否则为估算值）">' + fmtTokens(a.tokensToday) + ' / ' + fmtTokens(a.tokensTotal) + '</td>' +
         '<td class="mono" style="font-size:11px">' + lu + '</td>' +
         '<td class="mono" style="font-size:11px">' + cr + '</td>' +
         '<td style="white-space:nowrap">' +
           '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\', this)" title="测试账号是否可用（成功会清除冷却/过期状态）">⚡</button> ' +
-          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\')" title="重置本地今日统计">↻</button> ' +
+          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\', this)" title="检测限流并解除：探测上游，若仍限流则保持冷却并提示恢复时间">↻</button> ' +
           '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
         '</td></tr>';
     }).join('');
@@ -480,13 +579,22 @@ async function deleteAccount(id) {
   } catch (e) { toast('删除失败: ' + e.message, 'error'); }
 }
 
-async function resetAccount(id) {
-  if (!confirm('确定重置此账号的本地今日调用统计？不影响累计调用、状态和 Token。')) return;
+async function resetAccount(id, btn) {
+  const original = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading"></span>检测中'; }
   try {
     const d = await api('POST', '/accounts/reset', { accountId: id });
-    toast(d.message || '本地今日调用统计已重置', 'success');
+    const r = d.data || {};
+    const type = d.success ? 'success' : (r.status === 'cooldown' ? 'warning' : 'error');
+    let msg = d.message || '检测完成';
+    if (r.remaining && r.status !== 'active') msg += '（剩余 ' + esc(r.remaining) + '）';
+    toast(msg, type, 6000);
     loadAccounts(); loadStats();
-  } catch (e) { toast('重置失败: ' + e.message, 'error'); }
+  } catch (e) {
+    toast('检测失败: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = original; }
+  }
 }
 
 async function deleteAllAccounts() {
@@ -791,6 +899,99 @@ async function loadConfig() {
   } catch (e) { /* ignore */ }
 }
 
+// ========== opencode 免费模型 ==========
+async function loadOcConfig() {
+  try {
+    const d = await api('GET', '/opencode/config');
+    const c = d.data;
+    _('ocEnabled').value = String(c.enabled);
+    _('ocKey').value = c.key || 'public';
+    _('ocBaseURL').value = c.baseURL || '';
+    _('ocProxies').value = (c.proxies || []).join('\n');
+    _('ocStrategy').value = c.proxyStrategy || 'round_robin';
+    _('ocMaxConc').value = c.maxConcurrency || 8;
+    _('ocRetries').value = c.retries || 3;
+    _('ocFailover').value = String(c.failover);
+    _('ocFailoverCount').value = c.failoverCount || 3;
+    _('ocFailoverMinutes').value = c.failoverMinutes || 5;
+    _('ocCompactAuto').value = String(c.compaction ? c.compaction.auto : true);
+    _('ocCompactBuffer').value = c.compaction ? c.compaction.buffer : 20000;
+    _('ocKeepTokens').value = c.compaction ? c.compaction.keepTokens : 8000;
+    _('ocSummaryModel').value = c.compaction ? (c.compaction.summaryModel || '') : '';
+    _('ocMaxSummary').value = c.compaction ? c.compaction.maxSummary : 4096;
+    const rt = c.runtime || {};
+    _('ocFailoverInfo').innerHTML = rt.failoverActive
+      ? '<span style="color:var(--danger,#ff5d5d)">🔴 故障转移中 (opencode 不可用, 请求走 cline 池)</span>'
+      : '<span style="color:var(--success,#3ecf8e)">🟢 正常</span>';
+    const cd = rt.proxyCooldowns || {};
+    const keys = Object.keys(cd);
+    _('ocCooldownInfo').textContent = keys.length
+      ? keys.map(k => k + ' 冷却至 ' + cd[k]).join('; ')
+      : '暂无冷却中的代理';
+  } catch (e) { /* ignore */ }
+}
+
+async function saveOcConfig() {
+  const body = {
+    enabled: _('ocEnabled').value === 'true',
+    key: _('ocKey').value.trim(),
+    baseURL: _('ocBaseURL').value.trim(),
+    proxies: _('ocProxies').value.split('\n').map(s => s.trim()).filter(Boolean),
+    proxyStrategy: _('ocStrategy').value,
+    maxConcurrency: parseInt(_('ocMaxConc').value) || 8,
+    retries: parseInt(_('ocRetries').value) || 3,
+    failover: _('ocFailover').value === 'true',
+    failoverCount: parseInt(_('ocFailoverCount').value) || 3,
+    failoverMinutes: parseInt(_('ocFailoverMinutes').value) || 5,
+    compaction: {
+      auto: _('ocCompactAuto').value === 'true',
+      buffer: parseInt(_('ocCompactBuffer').value) || 20000,
+      keepTokens: parseInt(_('ocKeepTokens').value) || 8000,
+      summaryModel: _('ocSummaryModel').value.trim(),
+      maxSummary: parseInt(_('ocMaxSummary').value) || 4096
+    }
+  };
+  try {
+    const d = await api('POST', '/opencode/config/update', body);
+    toast('opencode 配置已保存', 'success');
+    loadOcConfig();
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function loadOcModels() {
+  try {
+    const d = await api('GET', '/opencode/models');
+    const models = d.data.models || [];
+    _('ocModelsList').innerHTML = '<table><thead><tr><th style="text-align:left">模型 ID</th><th>上下文</th><th>输出</th><th>来源</th></tr></thead><tbody>' +
+      models.map(m => '<tr><td style="text-align:left;font-family:monospace">' + esc(m.id) + '</td><td>' + m.context + '</td><td>' + m.output + '</td><td>' + m.source + '</td></tr>').join('') +
+      '</tbody></table><div style="margin-top:8px;font-size:12px;color:var(--text2)">共 ' + models.length + ' 个免费模型（每 10 分钟自动同步）</div>';
+  } catch (e) { _('ocModelsList').textContent = '加载失败'; }
+}
+
+async function refreshOcModels() {
+  try {
+    const d = await api('POST', '/opencode/models/refresh');
+    toast(d.message || '同步完成', 'success');
+    loadOcModels();
+  } catch (e) { toast('同步失败: ' + e.message, 'error'); }
+}
+
+async function loadOcStats() {
+  try {
+    const d = await api('GET', '/opencode/stats');
+    const t = d.data.today || {}, s = d.data.total || {};
+    _('ocStatsBox').innerHTML = '<table><thead><tr><th style="text-align:left"></th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>压缩消耗</th><th>限流命中</th></tr></thead><tbody>' +
+      '<tr><td style="text-align:left">今日</td><td>' + (t.requests || 0) + '</td><td>' + (t.promptTokens || 0) + '</td><td>' + (t.completionTokens || 0) + '</td><td>' + (t.compaction || 0) + '</td><td>' + (t.rateLimited || 0) + '</td></tr>' +
+      '<tr><td style="text-align:left">累计</td><td>' + (s.requests || 0) + '</td><td>' + (s.promptTokens || 0) + '</td><td>' + (s.completionTokens || 0) + '</td><td>' + (s.compaction || 0) + '</td><td>' + (s.rateLimited || 0) + '</td></tr>' +
+      '</tbody></table>';
+    const bm = t.byModel || {};
+    const rows = Object.keys(bm).map(k => '<tr><td style="text-align:left;font-family:monospace">' + esc(k) + '</td><td>' + bm[k].requests + '</td><td>' + bm[k].promptTokens + '</td><td>' + bm[k].completionTokens + '</td></tr>').join('');
+    _('ocModelStatsBox').innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:6px">按模型分布（今日）</div>' +
+      '<table><thead><tr><th style="text-align:left">模型</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="4" style="text-align:left;color:var(--text2)">暂无数据</td></tr>') + '</tbody></table>';
+  } catch (e) { /* ignore */ }
+}
+
 // ========== 初始化 ==========
 loadStats();
 loadAccounts();
@@ -798,6 +999,7 @@ loadKeys();
 loadModels();
 loadConfig();
 setInterval(() => { loadStats(); }, 10000);
+setInterval(() => { loadOcStats(); }, 15000);
 </script>
 </body>
 </html>`

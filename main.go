@@ -53,8 +53,8 @@ func main() {
 		}
 		fmt.Printf("\n=== Account Pool (%d accounts) ===\n\n", len(accounts))
 		for i, a := range accounts {
-			fmt.Printf("  %d. [%s] %s (status: %s, used: %d)\n",
-				i+1, a.AccountID, a.Email, a.Status, a.UsageCount)
+		fmt.Printf("  %d. [%s] %s (status: %s, used: %d, tokens: %d today / %d total)\n",
+			i+1, a.AccountID, a.Email, a.Status, a.UsageCount, a.TokensToday, a.TokensTotal)
 		}
 		fmt.Println()
 		return

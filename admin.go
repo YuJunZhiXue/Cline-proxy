@@ -63,6 +63,20 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/models/refresh", corsHandler(handleAdminModelsRefresh))
 	mux.HandleFunc("/admin/api/config", corsHandler(handleAdminConfig))
 	mux.HandleFunc("/admin/api/config/update", corsHandler(handleAdminUpdateConfig))
+	mux.HandleFunc("/admin/api/opencode/config", corsHandler(handleZenConfig))
+	mux.HandleFunc("/admin/api/opencode/config/update", corsHandler(handleZenConfigUpdate))
+	mux.HandleFunc("/admin/api/opencode/models", corsHandler(handleZenModels))
+	mux.HandleFunc("/admin/api/opencode/models/refresh", corsHandler(handleZenModelsRefresh))
+	mux.HandleFunc("/admin/api/opencode/stats", corsHandler(handleZenStats))
+	// 旧 zen 路径别名,兼容旧引用
+	mux.HandleFunc("/admin/api/zen/config", corsHandler(handleZenConfig))
+	mux.HandleFunc("/admin/api/zen/config/update", corsHandler(handleZenConfigUpdate))
+	mux.HandleFunc("/admin/api/zen/models", corsHandler(handleZenModels))
+	mux.HandleFunc("/admin/api/zen/models/refresh", corsHandler(handleZenModelsRefresh))
+	mux.HandleFunc("/admin/api/zen/stats", corsHandler(handleZenStats))
+	mux.HandleFunc("/admin/zen/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusFound)
+	})
 }
 
 func adminStaticHandler(w http.ResponseWriter, r *http.Request) {
@@ -501,7 +515,8 @@ func handleAdminDeleteAll(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /admin/api/accounts/reset  body: { accountId }
-// 仅重置该账号的今日使用次数，不影响总次数、状态和 Token。
+// 检测限流并解除：向上游发送探测请求。若上游仍限流（429）则保持冷却，
+// 重置无效；若探测成功则清除冷却、恢复正常状态，并重置今日统计。
 func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
@@ -528,8 +543,37 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resetTodayUsage(acc)
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "本地今日调用统计已重置"})
+	result, status := testAccount(acc)
+
+	if status == "active" {
+		// 探测通过：解除冷却并重置今日统计
+		resetTodayUsage(acc)
+		writeAPI(w, http.StatusOK, apiResponse{
+			Success: true,
+			Message: "检测通过：上游未限流，已解除冷却并重置今日统计",
+			Data:    result,
+		})
+		return
+	}
+
+	// 仍限流/失效：保持冷却，重置无效
+	msg := "上游仍限流，重置无效，保持冷却"
+	if status == "expired" {
+		msg = "Token 已失效，重置无效"
+	} else if status == "error" {
+		msg = "探测异常，请稍后重试"
+	}
+	if until, ok := result["cooldownUntil"].(string); ok && until != "" {
+		msg += "（预计恢复 " + until + "）"
+	}
+	if remaining, ok := result["remaining"].(string); ok && remaining != "" {
+		msg += "（剩余 " + remaining + "）"
+	}
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: false,
+		Message: msg,
+		Data:    result,
+	})
 }
 
 // POST /admin/api/accounts/test  body: { accountId }

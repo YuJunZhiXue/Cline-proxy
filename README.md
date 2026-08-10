@@ -1,20 +1,24 @@
 # Cline Go Proxy
 
-Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中文管理后台。
+Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中文管理后台。集成 **opencode opencode 免费模型** 统一网关：一个二进制同时服务 Cline 账号池与 zen free 模型，按 model 自动路由。
 
 ## 功能
 
-- **双协议兼容**：同时支持 `/v1/chat/completions`（OpenAI）和 `/v1/messages`（Anthropic Messages API）
+- **双上游统一网关**：按 model 自动路由 — Cline 账号池（`deepseek/deepseek-v4-flash` 等）与 opencode opencode 免费模型（`deepseek-v4-flash-free`、`nemotron-3-ultra-free` 等，匿名 `public` key）
+- **双协议兼容**：同时支持 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic Messages API）、`/v1/responses`（OpenAI Responses API，Cursor 等客户端直连）
+- **zen 模型动态同步**：每 10 分钟自动拉取 `https://opencode.ai/zen/v1/models`，新免费模型自动接入；付费模型显式 400 拒绝
+- **官方摘要压缩（opencode 机制移植）**：超限时按官方算法 select 尾部预算 → 锚定摘要模板（Objective/Work State/Next Move/Relevant Files）→ 调 zen 模型生成摘要 → 重组 `[摘要+recent]` 继续会话，增量更新摘要；摘要失败自动降级截断
+- **多 IP 轮询出口**：zen 上游支持 http/https/socks5 代理池，round_robin/random/fill 策略，绕过单 IP 匿名额度限制
+- **token 统计与日志入库**：每请求 JSONL 落盘（`zen-stats.jsonl`），今日/累计聚合、按模型分布，管理后台实时展示
 - **多账号轮询**：自动在多个 Cline 账号间切换负载（支持 `round_robin` / `fill` / `random` 策略）
-- **中文管理后台**：浏览器访问 `/admin/` 即可管理账号、API Key、模型配置、请求头、代理设置
+- **中文管理后台**：浏览器访问 `/admin/` 管理账号、API Key、模型配置、请求头、代理设置；`/admin/` 的「opencode 免费模型」页统一管理 zen 上游、代理池、压缩参数、模型与统计（原独立页已合并）
 - **API Key 鉴权**：保护代理端点，支持生成/删除多个 API Key
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词，不存在则使用客户端自带
 - **账号导入**：支持 OAuth 浏览器登录、手动 Token 输入、批量文件导入
-- **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`
-- **账号冷却与自动恢复**：命中 429 `INFERENCE_CAP_ERROR` 时自动解析 "Try again in 17h 59m" 并标记冷却，冷却到期自动恢复，账号列表显示预计恢复时间
-- **账号测试**：后台账号管理提供「⚡测试」按钮，对单个账号发起真实探测请求，验证是否可用；测试成功会清除冷却/过期状态（相当于升级版重置），失败会按上游返回的等待时长标记冷却
-- **本地调用统计**：账号列表明确显示「本地今日/累计调用」，统计代理转发成功（上游 HTTP 200）的实际调用；跨日自动重置今日调用；「↻重置」按钮仅重置本地今日调用。该数字不是 Cline 官方免费额度，官方每日额度不公开精确次数。
-- **多平台 CI/CD**：GitHub Actions 自动构建，推送代码到 main 即触发，生成 Windows (amd64/arm64)、Linux (amd64/arm64)、macOS (amd64/arm64) 共 6 个平台二进制，版本从 `v0.0.1` 开始，之后每次自动递增补丁版本
+- **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`，zen 配置保存在 `.zen-config.json`
+- **账号冷却与自动恢复**：命中 429 `INFERENCE_CAP_ERROR` 时自动解析 "Try again in 17h 59m" 并标记冷却，冷却到期自动恢复
+- **本地调用统计**：账号列表明确显示「本地今日/累计调用」
+- **多平台 CI/CD**：GitHub Actions 自动构建 6 平台二进制
 
 ## 快速开始
 
@@ -136,13 +140,51 @@ Model:    deepseek/deepseek-v4-flash
 
 Release 版本号以 `v` 开头，从 `v0.0.1` 开始按语义版本递增：首次发布为 `v0.0.1`，后续推送自动发布 `v0.0.2`、`v0.0.3` 等版本。
 
-## 项目结构
+### 6. opencode 免费模型（统一网关）
+
+无需配置，`cline-proxy.exe` 启动即启用 zen 上游（匿名 key `public`）：
+
+**OpenAI 格式（/v1/chat/completions）：**
+```
+Base URL: http://<本机局域网IP>:3457/v1
+API Key:  <在管理后台生成的 Key>
+Model:    deepseek-v4-flash-free   # 或别名 deepseek-v4-flash
+```
+
+**Anthropic 格式（/v1/messages）：**
+```
+Model:    deepseek-v4-flash-free
+```
+
+**Responses API（/v1/responses，Cursor 等）：**
+```
+Model:    deepseek-v4-flash-free
+```
+
+可用 opencode 免费模型（`GET /v1/models` 实时列出）：
+
+| 模型 ID | 上下文 | 说明 |
+|---------|:----:|------|
+| `deepseek-v4-flash-free` | 200K | 别名 `deepseek-v4-flash` |
+| `nemotron-3-ultra-free` | 1M | 免费里最大上下文 |
+| `north-mini-code-free` | 256K | |
+| `mimo-v2.5-free` / `ling-3.0-flash-free` / `laguna-s-2.1-free` / `longcat-2.0-free` / `big-pickle` | 200K | |
+
+超限时自动触发官方摘要压缩（`/admin/` → opencode 免费模型 页可调参数）；付费 zen 模型（如 `glm-5.1`）返回 400 拒绝。
+
+## 7. 项目结构
 
 ```
 ├── main.go               入口与 CLI 参数处理
 ├── proxy.go              HTTP 服务、API 路由与协议转换
-├── models.go             官方免费模型同步
+├── models.go             官方免费模型同步（Cline）
+├── zen.go                opencode 免费模型上游、三态路由、配置持久化
+├── compact.go            opencode 官方摘要压缩机制移植
+├── proxy_pool.go         zen 上游多 IP 轮询出口（HTTP/SOCKS5 代理池）
+├── stats.go              token 统计与 JSONL 日志入库
+├── responses.go          /v1/responses（OpenAI Responses API）转换
 ├── admin.go              管理后台 REST API
+├── admin_zen.go          zen 管理页面与 API
 ├── admin_html.go         管理后台页面
 ├── auth.go               WorkOS OAuth 登录与 Token 刷新
 ├── pool.go               账号池管理与持久化
@@ -153,6 +195,7 @@ Release 版本号以 `v` 开头，从 `v0.0.1` 开始按语义版本递增：首
 ├── docker-compose.yml    Docker Compose 配置
 ├── go.mod                Go 模块定义
 ├── .cline-accounts.json  账号池数据
+├── .zen-config.json      zen 上游配置（代理池、压缩参数）
 ├── override.md           可选的系统提示词覆盖文件
 └── README.md             项目说明
 ```
