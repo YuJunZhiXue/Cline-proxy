@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -309,6 +311,32 @@ func setZenConfig(c *zenConfigData) {
 	saveZenConfig()
 	rebuildZenTransport()
 	rebuildZenSem()
+}
+
+// validateProxyList 校验代理列表格式: 支持 http/https/socks5/socks5h, 必须包含 host:port。
+func validateProxyList(proxies []string) error {
+	for _, p := range proxies {
+		line := strings.TrimSpace(p)
+		if line == "" {
+			continue
+		}
+		u, err := url.Parse(line)
+		if err != nil {
+			return fmt.Errorf("代理格式无效 %q: %v", line, err)
+		}
+		switch u.Scheme {
+		case "http", "https", "socks5", "socks5h":
+		default:
+			return fmt.Errorf("代理 %q 协议不受支持（支持 http/https/socks5/socks5h）", line)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("代理 %q 缺少 host:port", line)
+		}
+		if _, _, err := net.SplitHostPort(u.Host); err != nil {
+			return fmt.Errorf("代理 %q 缺少端口: %v", line, err)
+		}
+	}
+	return nil
 }
 
 // ============ zen 上游调用 ============

@@ -58,6 +58,8 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/accounts/refresh-all", corsHandler(handleAdminRefreshAll))
 	mux.HandleFunc("/admin/api/accounts/delete-all", corsHandler(handleAdminDeleteAll))
 	mux.HandleFunc("/admin/api/accounts/reset", corsHandler(handleAdminAccountReset))
+	mux.HandleFunc("/admin/api/accounts/export", corsHandler(handleAccountsExport))
+	mux.HandleFunc("/admin/api/logs", corsHandler(handleRequestLogs))
 	mux.HandleFunc("/admin/api/keys", corsHandler(handleAdminGetKeys))
 	mux.HandleFunc("/admin/api/keys/generate", corsHandler(handleAdminGenerateKey))
 	mux.HandleFunc("/admin/api/keys/delete", corsHandler(handleAdminDeleteKey))
@@ -1023,6 +1025,49 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"expired":  expired,
 			"strategy": "round_robin",
 			"version":  "go-1.1",
+		},
+	})
+}
+
+// GET /admin/api/accounts/export 导出全部账号 refreshToken（JSON 文件下载）
+func handleAccountsExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	p := loadPool()
+	items := make([]map[string]any, 0, len(p.Accounts))
+	for _, a := range p.Accounts {
+		items = append(items, map[string]any{
+			"refreshToken": a.RefreshToken,
+			"email":        a.Email,
+		})
+	}
+	data, _ := json.MarshalIndent(items, "", "  ")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="cline-accounts-export.json"`)
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+// GET /admin/api/logs 最近请求日志（对话/调用历史）
+func handleRequestLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	logs := LoadRequestLogs()
+	if logs == nil {
+		logs = []RequestLog{}
+	}
+	// 倒序返回（最新在前）
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"logs": logs,
 		},
 	})
 }

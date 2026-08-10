@@ -97,6 +97,10 @@ func handleZenConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		next.BaseURL = strings.TrimRight(*patch.BaseURL, "/")
 	}
 	if patch.Proxies != nil {
+		if err := validateProxyList(patch.Proxies); err != nil {
+			writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+			return
+		}
 		next.Proxies = patch.Proxies
 	}
 	if patch.ProxyStrategy != nil && *patch.ProxyStrategy != "" {

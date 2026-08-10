@@ -72,6 +72,7 @@ func StartProxy(host string, port int) error {
 	startModelsRefresher()
 	startZenModelsRefresher()
 	initStats()
+	LoadRequestLogsFromFile()
 	go cleanupCompactStates()
 
 	mux := http.NewServeMux()
@@ -292,7 +293,7 @@ func StartProxy(host string, port int) error {
 	proxyListenAddress = addr
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: requestLogMiddleware(mux),
 	}
 
 	fmt.Println("")
