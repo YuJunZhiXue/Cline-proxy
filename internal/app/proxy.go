@@ -262,8 +262,10 @@ func StartProxy(host string, port int) error {
 				usageFn(u)
 			}
 			out = normalizeOpenAIResponse(out)
+			contentStr, _ := getNested(out, "choices", 0, "message", "content").(string)
+			finishReason := getNested(out, "choices", 0, "finish_reason")
 			log.Printf("  nonstream (aggregated): model=%v content_len=%d finish=%v",
-				out["model"], len(getNested(out, "choices", 0, "message", "content").(string)), getNested(out, "choices", 0, "finish_reason"))
+				out["model"], len(contentStr), finishReason)
 			writeJSON(w, http.StatusOK, out)
 			return
 		}
@@ -652,17 +654,86 @@ func getMsgCount(params map[string]any) int {
 }
 
 func handleStreamResponseWithUsage(w http.ResponseWriter, upstream *http.Response, onUsage func(map[string]any)) {
+	// Check Flusher support BEFORE writing any headers
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// Client connection doesn't support streaming.
+		// Aggregate the upstream stream into a single response, then emit it as SSE events
+		// so downstream SSE parsers (like AxonHub) receive a valid SSE stream.
+		log.Printf("  streaming not supported for client, falling back to SSE-wrapped aggregation")
+		out, err := collectStreamResponse(upstream)
+		if err != nil {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("data: {\"error\":{\"message\":\"aggregation failed\",\"type\":\"parse_error\"}}\n\n"))
+			w.Write([]byte("n\n"))
+			return
+		}
+		if u, ok := out["usage"].(map[string]any); ok && len(u) > 0 {
+			onUsage(u)
+		}
+		out = normalizeOpenAIResponse(out)
+
+		// Emit the aggregated response as SSE events
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+
+		// Build a content delta chunk
+		contentVal := getNested(out, "choices", 0, "message", "content")
+		delta := map[string]any{
+			"role":    "assistant",
+			"content": contentVal,
+		}
+		if tc := getNested(out, "choices", 0, "message", "tool_calls"); tc != nil {
+			delta["tool_calls"] = tc
+		}
+		chunk := map[string]any{
+			"id":      out["id"],
+			"object":  "chat.completion.chunk",
+			"created": out["created"],
+			"model":   out["model"],
+			"choices": []map[string]any{
+				{
+					"index":         0,
+					"delta":         delta,
+					"finish_reason": nil,
+				},
+			},
+		}
+		if u, ok := out["usage"]; ok {
+			chunk["usage"] = u
+		}
+		chunkJSON, _ := json.Marshal(chunk)
+		w.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
+
+		// Done chunk
+		doneChunk := map[string]any{
+			"id":      out["id"],
+			"object":  "chat.completion.chunk",
+			"created": out["created"],
+			"model":   out["model"],
+			"choices": []map[string]any{
+				{
+					"index":         0,
+					"delta":         map[string]any{},
+					"finish_reason": "stop",
+				},
+			},
+		}
+		doneJSON, _ := json.Marshal(doneChunk)
+		w.Write([]byte("data: " + string(doneJSON) + "\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		log.Printf("  streaming not supported for client")
-		return
-	}
 
 	reader := bufio.NewReader(upstream.Body)
 	for {
@@ -1569,16 +1640,31 @@ func handleZenAnthropic(w http.ResponseWriter, r *http.Request, req anthropicReq
 }
 
 func handleAnthropicStreamWithUsage(w http.ResponseWriter, upstream *http.Response, modelName string, toolSchemas map[string]map[string]bool, onUsage func(map[string]any)) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		log.Printf("  anthropic stream: streaming not supported for client, falling back to non-stream aggregation")
+		out, err := collectStreamResponse(upstream)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+			})
+			return
+		}
+		if u, ok := out["usage"].(map[string]any); ok && len(u) > 0 {
+			onUsage(u)
+		}
+		out = normalizeOpenAIResponse(out)
+		anthropicResp := openAIToAnthropic(out)
+		writeJSON(w, http.StatusOK, anthropicResp)
+		return
+	}
+
 	log.Printf("  anthropic stream: starting real-time forward")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return
-	}
 
 	var streamLog *os.File
 	if sf, err := os.OpenFile(kit.ResolveDataPath("cline-proxy-stream.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
