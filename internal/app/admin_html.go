@@ -8,52 +8,52 @@ const adminHTML = `<!DOCTYPE html>
 <title>Cline 代理管理面板</title>
 <style>
 :root{
-  --bg:#0b0e17;--bg2:#111527;--bg3:#1a2038;--panel:rgba(148,163,184,.055);
-  --border:rgba(148,163,184,.14);--border-strong:rgba(148,163,184,.28);
-  --text:#e6edf6;--text2:#8b98b4;--text3:#5b6b89;
-  --accent:#22d3ee;--accent2:#34d399;--amber:#f59e0b;--danger:#f87171;
-  --accent-grad:linear-gradient(135deg,#22d3ee,#34d399);
-  --glow:0 0 0 1px rgba(34,211,238,.25),0 0 24px rgba(34,211,238,.12);
-  --status-active-bg:rgba(52,211,153,.14);--status-cooldown-bg:rgba(245,158,11,.14);
-  --status-expired-bg:rgba(248,113,113,.14);
-  --btn-primary-bg:linear-gradient(135deg,#0ea5e9,#22d3ee);--btn-primary-hover:linear-gradient(135deg,#0284c7,#0ea5e9);
-  --btn-success-bg:linear-gradient(135deg,#059669,#34d399);--btn-success-hover:linear-gradient(135deg,#047857,#059669);
-  --radius:14px;--radius-sm:9px;
+  --bg:#0d0f12;--bg2:#131519;--bg3:#1a1d23;--panel:rgba(255,255,255,.028);
+  --border:rgba(255,255,255,.08);--border-strong:rgba(255,255,255,.16);
+  --text:#d6dae2;--text2:#8b919d;--text3:#5d626c;
+  --accent:#8ab4f8;--accent2:#7ee2a8;--amber:#d9b04a;--danger:#e0705f;
+  --accent-grad:linear-gradient(135deg,#8ab4f8,#a8c7fa);
+  --glow:0 0 0 1px rgba(138,180,248,.2);
+  --status-active-bg:rgba(126,226,168,.1);--status-cooldown-bg:rgba(217,176,74,.1);
+  --status-expired-bg:rgba(224,112,95,.1);
+  --btn-primary-bg:#2b4a77;--btn-primary-hover:#34578c;
+  --btn-success-bg:#27513c;--btn-success-hover:#2f6249;
+  --radius:10px;--radius-sm:7px;
 }
 [data-theme="light"]{
-  --bg:#f3f5fa;--bg2:#ffffff;--bg3:#eef1f7;--panel:rgba(255,255,255,.7);
-  --border:rgba(15,23,42,.12);--border-strong:rgba(15,23,42,.26);
-  --text:#0f172a;--text2:#57617a;--text3:#8a94ab;
-  --accent:#0891b2;--accent2:#059669;--amber:#b45309;--danger:#dc2626;
-  --accent-grad:linear-gradient(135deg,#0891b2,#059669);
-  --glow:0 0 0 1px rgba(8,145,178,.22),0 6px 24px rgba(8,145,178,.10);
-  --status-active-bg:rgba(5,150,105,.12);--status-cooldown-bg:rgba(180,83,9,.12);
-  --status-expired-bg:rgba(220,38,38,.10);
-  --btn-primary-bg:linear-gradient(135deg,#0284c7,#06b6d4);--btn-primary-hover:linear-gradient(135deg,#0369a1,#0284c7);
-  --btn-success-bg:linear-gradient(135deg,#059669,#10b981);--btn-success-hover:linear-gradient(135deg,#047857,#059669);
+  --bg:#f6f7f8;--bg2:#ffffff;--bg3:#eef0f2;--panel:#ffffff;
+  --border:rgba(15,18,22,.1);--border-strong:rgba(15,18,22,.22);
+  --text:#1c1f24;--text2:#5c636e;--text3:#9aa0aa;
+  --accent:#33629c;--accent2:#2b7a4b;--amber:#96700f;--danger:#b3442f;
+  --accent-grad:linear-gradient(135deg,#33629c,#4a7ab5);
+  --glow:0 0 0 1px rgba(51,98,156,.18);
+  --status-active-bg:rgba(43,122,75,.1);--status-cooldown-bg:rgba(150,112,15,.1);
+  --status-expired-bg:rgba(179,68,47,.08);
+  --btn-primary-bg:#33629c;--btn-primary-hover:#2a5284;
+  --btn-success-bg:#2b7a4b;--btn-success-hover:#246a40;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{font-family:'Inter','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;min-height:100vh}
-body::before{content:'';position:fixed;inset:0;z-index:-1;background:
-  radial-gradient(900px 500px at 85% -10%,rgba(34,211,238,.09),transparent 60%),
-  radial-gradient(800px 500px at -10% 110%,rgba(52,211,153,.07),transparent 60%),
-  var(--bg);pointer-events:none}
 .mono,code{font-family:'JetBrains Mono','Cascadia Code','Fira Code',Consolas,monospace;font-size:12px}
 
 /* ===== 布局 ===== */
 .layout{display:flex;min-height:100vh}
 .sidebar{width:236px;background:var(--panel);backdrop-filter:blur(14px);border-right:1px solid var(--border);padding:18px 10px;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
 .sidebar h1{font-size:15px;font-weight:700;padding:2px 10px 16px;border-bottom:1px solid var(--border);margin-bottom:10px;display:flex;align-items:center;gap:8px;letter-spacing:.02em}
-.sidebar h1 .logo{width:28px;height:28px;border-radius:8px;background:var(--accent-grad);display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#04121a;box-shadow:var(--glow)}
-.sidebar h1 .brand-name{background:var(--accent-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar h1 .logo{width:28px;height:28px;border-radius:7px;background:var(--btn-primary-bg);display:inline-flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--glow)}
+.sidebar h1 .logo svg{width:15px;height:15px}
+.sidebar h1 .brand-name{color:var(--text)}
 .sidebar h1 .theme-toggle{margin-left:auto;padding:4px 8px}
 .sidebar h1 span{color:var(--accent)}
-.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;color:var(--text2);transition:.18s;font-size:13.5px;margin-bottom:2px;position:relative}
-.nav-item .nav-ico{width:18px;text-align:center;font-size:15px;filter:saturate(.8)}
-.nav-item:hover{color:var(--text);background:rgba(148,163,184,.09)}
-.nav-item.active{color:var(--text);background:linear-gradient(90deg,rgba(34,211,238,.16),rgba(34,211,238,.05));font-weight:600}
-.nav-item.active::before{content:'';position:absolute;left:-10px;top:20%;bottom:20%;width:3px;border-radius:3px;background:var(--accent-grad);box-shadow:0 0 12px rgba(34,211,238,.6)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--text2);transition:.15s;font-size:13.5px;margin-bottom:1px;position:relative}
+.nav-item .nav-ico{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.nav-item .nav-ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.nav-item.active{color:var(--text);background:rgba(255,255,255,.07);font-weight:600}
+.nav-item.active::before{content:'';position:absolute;left:-10px;top:22%;bottom:22%;width:2px;border-radius:2px;background:var(--accent)}
+.nav-item.active .nav-ico svg{stroke:var(--accent)}
+.nav-group{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);padding:14px 12px 5px;user-select:none}
 .sidebar-footer{margin-top:auto;padding:12px 8px 4px;font-size:11.5px;color:var(--text3);border-top:1px solid var(--border)}
 .sidebar-footer a{color:var(--accent);text-decoration:none}
 .main{flex:1;padding:26px 34px 60px;min-width:0;max-width:1500px;margin:0 auto;width:100%}
@@ -61,12 +61,11 @@ h2{font-size:21px;margin-bottom:18px;font-weight:700;letter-spacing:.01em}
 
 /* ===== 卡片 ===== */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:26px}
-.card{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden;transition:.2s}
-.card::after{content:'';position:absolute;inset:0;background:radial-gradient(220px 80px at 85% -10%,rgba(34,211,238,.12),transparent);pointer-events:none}
-.card:hover{transform:translateY(-2px);border-color:var(--border-strong);box-shadow:0 10px 30px rgba(2,6,23,.35)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden;transition:.2s}
+.card:hover{border-color:var(--border-strong)}
 .card .num{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--text)}
 .card .label{font-size:12px;color:var(--text2);margin-top:5px;display:flex;align-items:center;gap:6px}
-.card .label::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--lab-c,var(--accent));box-shadow:0 0 10px var(--lab-c,var(--accent))}
+.card .label::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--lab-c,var(--accent))}
 .card .num.green{color:var(--accent2);--lab-c:var(--accent2)}
 .card .num.red{color:var(--danger);--lab-c:var(--danger)}
 .card .num.yellow{color:var(--amber);--lab-c:var(--amber)}
@@ -79,13 +78,15 @@ h2{font-size:21px;margin-bottom:18px;font-weight:700;letter-spacing:.01em}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
 /* ===== 区块 ===== */
-.section{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:22px;overflow:hidden;animation:rise .4s ease both}
-.section-title{padding:13px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;background:rgba(148,163,184,.03)}
+.section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:22px;overflow:hidden;animation:rise .4s ease both}
+.section-title{padding:13px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
+.section-title .sec-ico{width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.section-title .sec-ico svg{width:15px;height:15px;stroke:var(--text2);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .section-body{padding:18px}
 .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 8px;gap:4px;overflow-x:auto}
-.tab{padding:11px 18px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;font-size:13px;white-space:nowrap;transition:.15s;border-radius:8px 8px 0 0}
-.tab:hover{color:var(--text);background:rgba(148,163,184,.07)}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab{padding:11px 18px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;font-size:13px;white-space:nowrap;transition:.15s}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
 .tab-content{display:none;padding:18px}
 .tab-content.active{display:block;animation:rise .25s ease both}
 
@@ -93,9 +94,9 @@ h2{font-size:21px;margin-bottom:18px;font-weight:700;letter-spacing:.01em}
 .table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
-th{color:var(--text2);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
+th{color:var(--text3);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
 tbody tr{transition:.12s}
-tbody tr:hover{background:rgba(148,163,184,.06)}
+tbody tr:hover{background:rgba(255,255,255,.035)}
 tbody tr:last-child td{border-bottom:none}
 
 /* ===== 状态徽章 ===== */
@@ -104,27 +105,29 @@ tbody tr:last-child td{border-bottom:none}
 .status.cooldown{background:var(--status-cooldown-bg);color:var(--amber)}
 .status.expired{background:var(--status-expired-bg);color:var(--danger)}
 .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
-.status-dot.active{background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
-.status-dot.cooldown{background:var(--amber);box-shadow:0 0 8px var(--amber)}
-.status-dot.expired{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+.status-dot.active{background:var(--accent2)}
+.status-dot.cooldown{background:var(--amber)}
+.status-dot.expired{background:var(--danger)}
 
 /* ===== 按钮 ===== */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:rgba(148,163,184,.08);color:var(--text);cursor:pointer;font-size:13px;transition:.18s;text-decoration:none;font-family:inherit;white-space:nowrap}
-.btn:hover{background:rgba(148,163,184,.16);border-color:var(--border-strong);transform:translateY(-1px)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;font-size:13px;transition:.15s;text-decoration:none;font-family:inherit;white-space:nowrap}
+.btn:hover{background:rgba(255,255,255,.09);border-color:var(--border-strong)}
 .btn:active{transform:none}
-.btn-primary{background:var(--btn-primary-bg);border-color:transparent;color:#04121a;font-weight:600;box-shadow:0 4px 14px rgba(14,165,233,.28)}
-.btn-primary:hover{background:var(--btn-primary-hover);box-shadow:0 6px 18px rgba(14,165,233,.38)}
-.btn-success{background:var(--btn-success-bg);border-color:transparent;color:#04231a;font-weight:600;box-shadow:0 4px 14px rgba(5,150,105,.28)}
+.btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.btn-primary{background:var(--btn-primary-bg);border-color:transparent;color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--btn-primary-hover)}
+.btn-success{background:var(--btn-success-bg);border-color:transparent;color:#fff;font-weight:600}
 .btn-success:hover{background:var(--btn-success-hover)}
-.btn-danger{border-color:rgba(248,113,113,.4);color:var(--danger);background:transparent}
-.btn-danger:hover{background:rgba(248,113,113,.12);border-color:var(--danger)}
-.btn-sm{padding:3px 10px;font-size:12px;border-radius:7px}
+.btn-danger{border-color:rgba(224,112,95,.4);color:var(--danger);background:transparent}
+.btn-danger:hover{background:rgba(224,112,95,.1);border-color:var(--danger)}
+.btn-sm{padding:3px 10px;font-size:12px;border-radius:6px}
+.btn-sm svg{width:13px;height:13px}
 
 /* ===== 表单 ===== */
-input,textarea,select{width:100%;padding:9px 13px;background:rgba(2,6,23,.4);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;transition:.15s}
-[data-theme="light"] input,[data-theme="light"] textarea,[data-theme="light"] select{background:rgba(15,23,42,.03)}
+input,textarea,select{width:100%;padding:9px 13px;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;transition:.15s}
+[data-theme="light"] input,[data-theme="light"] textarea,[data-theme="light"] select{background:#fff}
 input::placeholder,textarea::placeholder{color:var(--text3)}
-input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(34,211,238,.15)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(138,180,248,.12)}
 textarea{resize:vertical;min-height:84px;font-family:'JetBrains Mono','Cascadia Code',Consolas,monospace;font-size:12px}
 select{cursor:pointer;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--text2) 50%),linear-gradient(135deg,var(--text2) 50%,transparent 50%);background-position:calc(100% - 18px) 55%,calc(100% - 13px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .form-row{display:flex;gap:14px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap}
@@ -140,13 +143,32 @@ select{cursor:pointer;appearance:none;background-image:linear-gradient(45deg,tra
 .hint{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6}
 .hint strong{color:var(--text)}
 
+/* ===== 仪表盘：快速开始与端点 ===== */
+.steps{display:flex;flex-direction:column;gap:0}
+.step{display:flex;gap:14px;position:relative;padding-bottom:18px}
+.step:last-child{padding-bottom:0}
+.step::before{content:'';position:absolute;left:13px;top:30px;bottom:2px;width:2px;background:var(--border);border-radius:2px}
+.step:last-child::before{display:none}
+.step-no{width:27px;height:27px;flex-shrink:0;border-radius:50%;border:1px solid var(--border-strong);color:var(--text2);font-weight:600;font-size:12.5px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.03)}
+.step-title{font-weight:600;font-size:13.5px;margin-top:3px}
+.step-desc{font-size:12.5px;color:var(--text2);margin-top:3px;line-height:1.6}
+.step-desc code{background:rgba(255,255,255,.07);padding:1px 7px;border-radius:5px}
+.endpoint-list{display:flex;flex-direction:column;gap:8px}
+.endpoint{display:flex;align-items:center;gap:12px;padding:9px 13px;background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:8px;flex-wrap:wrap}
+.endpoint code{background:rgba(138,180,248,.08);border:1px solid rgba(138,180,248,.2);color:var(--accent);padding:3px 10px;border-radius:6px;font-size:11.5px;white-space:nowrap}
+.endpoint span{font-size:12px;color:var(--text2);flex:1;min-width:160px}
+.danger-zone{border-color:rgba(224,112,95,.28)}
+.danger-zone .section-title{color:var(--danger)}
+.auto-pill{font-size:11px;color:var(--text2);background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.auto-pill.paused{color:var(--text3);border-color:var(--border)}
+
 /* ===== Toast ===== */
 .toast{position:fixed;top:22px;right:22px;padding:12px 20px;border-radius:12px;color:#fff;z-index:9999;opacity:0;transform:translateY(-12px) scale(.97);transition:.3s cubic-bezier(.2,.9,.3,1.2);font-size:13px;max-width:420px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 40px rgba(2,6,23,.5);white-space:pre-line}
 .toast.show{opacity:1;transform:none}
-.toast.success{background:rgba(5,150,105,.92)}
-.toast.error{background:rgba(220,38,38,.92)}
-.toast.info{background:rgba(14,165,233,.92)}
-.toast.warning{background:rgba(180,83,9,.92)}
+.toast.success{background:#2b5a44}
+.toast.error{background:#7a3a30}
+.toast.info{background:#31465e}
+.toast.warning{background:#6e5619}
 
 /* ===== 杂项 ===== */
 .loading{display:inline-block;width:14px;height:14px;border:2px solid var(--text3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
@@ -154,19 +176,19 @@ select{cursor:pointer;appearance:none;background-image:linear-gradient(45deg,tra
 .empty{padding:30px;text-align:center;color:var(--text2)}
 .empty-state{padding:44px 20px;text-align:center;color:var(--text2)}
 .empty-state .icon{font-size:40px;margin-bottom:10px;display:block;opacity:.8}
-.key-display{background:rgba(2,6,23,.45);padding:9px 13px;border-radius:var(--radius-sm);border:1px solid var(--border);font-family:'JetBrains Mono','Cascadia Code',Consolas,monospace;font-size:12px;word-break:break-all;cursor:pointer;transition:.15s}
-.key-display:hover{background:rgba(34,211,238,.08);border-color:var(--accent)}
+.key-display{background:rgba(0,0,0,.3);padding:9px 13px;border-radius:var(--radius-sm);border:1px solid var(--border);font-family:'JetBrains Mono','Cascadia Code',Consolas,monospace;font-size:12px;word-break:break-all;cursor:pointer;transition:.15s}
+.key-display:hover{border-color:var(--accent)}
 .copy-icon{cursor:pointer;color:var(--text2);padding:2px 6px;border-radius:4px}
 .copy-icon:hover{color:var(--text);background:var(--bg3)}
-.model-tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;background:rgba(148,163,184,.1);color:var(--text2);margin:2px;letter-spacing:.02em}
-.model-tag.free{border:1px solid rgba(52,211,153,.5);color:var(--accent2);background:rgba(52,211,153,.08)}
-.model-tag.pass{border:1px solid rgba(245,158,11,.5);color:var(--amber);background:rgba(245,158,11,.08)}
-.theme-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--border);border-radius:8px;background:rgba(148,163,184,.08);color:var(--text2);cursor:pointer;font-size:12px;transition:.15s;font-family:inherit}
-.theme-toggle:hover{color:var(--text);background:rgba(148,163,184,.16)}
+.model-tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;background:rgba(255,255,255,.06);color:var(--text2);margin:2px;letter-spacing:.02em}
+.model-tag.free{border:1px solid rgba(126,226,168,.35);color:var(--accent2);background:rgba(126,226,168,.07)}
+.model-tag.pass{border:1px solid rgba(217,176,74,.35);color:var(--amber);background:rgba(217,176,74,.07)}
+.theme-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--border);border-radius:7px;background:rgba(255,255,255,.04);color:var(--text2);cursor:pointer;font-size:12px;transition:.15s;font-family:inherit}
+.theme-toggle:hover{color:var(--text);background:rgba(255,255,255,.09)}
 [data-theme="dark"] .theme-toggle .light-label{display:none}
 body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 .probe-pill{font-size:11px;color:var(--text3)}
-.oauth-card{border:1px solid var(--border);border-radius:12px;padding:16px;background:rgba(148,163,184,.05);margin-top:14px}
+.oauth-card{border:1px solid var(--border);border-radius:10px;padding:16px;background:rgba(255,255,255,.03);margin-top:14px}
 .stat-mini{font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;color:var(--text2)}
 
 /* ===== 响应式 ===== */
@@ -177,6 +199,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
   .sidebar h1 .brand-name{display:none}
   .sidebar .nav-item{padding:7px 11px;white-space:nowrap}
   .sidebar .nav-item.active::before{display:none}
+  .nav-group{display:none}
   .sidebar .theme-toggle{margin-left:4px}
   .sidebar-footer{display:none}
   .main{padding:20px 16px 48px}
@@ -193,13 +216,15 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 <body>
 <div class="layout">
 <div class="sidebar">
-<h1><span class="logo">⚡</span><span class="brand-name">Cline 代理</span><button class="theme-toggle" onclick="toggleTheme()" title="切换主题"><span class="icon" id="themeIcon">🌙</span><span class="light-label">浅色</span><span class="dark-label">深色</span></button></h1>
-<div class="nav-item active" data-tab="dashboard"><span class="nav-ico">📊</span> 仪表盘</div>
-<div class="nav-item" data-tab="accounts"><span class="nav-ico">👤</span> 账号管理</div>
-<div class="nav-item" data-tab="import"><span class="nav-ico">📥</span> 导入账号</div>
-<div class="nav-item" data-tab="settings"><span class="nav-ico">⚙️</span> 设置</div>
-<div class="nav-item" data-tab="logs"><span class="nav-ico">📜</span> 请求日志</div>
-<div class="nav-item" data-tab="opencode"><span class="nav-ico">🌐</span> opencode 免费模型</div>
+<h1><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span><span class="brand-name">Cline Proxy</span><button class="theme-toggle" onclick="toggleTheme()" title="切换主题"><span class="icon" id="themeIcon"></span><span class="light-label">浅色</span><span class="dark-label">深色</span></button></h1>
+<div class="nav-item active" data-tab="dashboard"><span class="nav-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span> 仪表盘</div>
+<div class="nav-group">账号池</div>
+<div class="nav-item" data-tab="accounts"><span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></span> 账号管理</div>
+<div class="nav-item" data-tab="import"><span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span> 导入账号</div>
+<div class="nav-group">服务</div>
+<div class="nav-item" data-tab="settings"><span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></span> 代理设置</div>
+<div class="nav-item" data-tab="logs"><span class="nav-ico"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></span> 请求日志</div>
+<div class="nav-item" data-tab="opencode"><span class="nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14.5 14.5 0 0 1 0 18 14.5 14.5 0 0 1 0-18z"/></svg></span> opencode 免费模型</div>
 <div class="sidebar-footer">
   <div>管理面板: <a href="/admin/">/admin/</a></div>
   <div>API 地址: <span id="footerApiAddr">http://127.0.0.1:3457</span></div>
@@ -209,7 +234,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 <div class="main">
 
 <div id="tab-dashboard" class="tab-panel">
-<h2>📊 仪表盘</h2>
+<h2>仪表盘</h2>
 <div class="cards">
   <div class="card"><div class="num blue" id="statTotal">-</div><div class="label">账号总数</div></div>
   <div class="card"><div class="num green" id="statActive">-</div><div class="label">活跃</div></div>
@@ -217,28 +242,49 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
   <div class="card"><div class="num red" id="statExpired">-</div><div class="label">已过期</div></div>
 </div>
 <div class="section">
-  <div class="section-title">📋 快捷操作</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span> 快捷操作</div>
   <div class="section-body" style="display:flex;gap:10px;flex-wrap:wrap">
-    <button class="btn btn-primary" onclick="switchTab('import')">➕ 添加账号</button>
-    <button class="btn" onclick="refreshAllTokens()">🔄 刷新全部 Token</button>
-    <button class="btn" onclick="document.getElementById('fileInput').click()">📄 从文件导入</button>
+    <button class="btn btn-primary" onclick="switchTab('import')">添加账号</button>
+    <button class="btn" onclick="refreshAllTokens()">刷新全部 Token</button>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">从文件导入</button>
     <input type="file" id="fileInput" accept=".json,.txt" style="display:none" onchange="handleFileImport(event)">
-    <button class="btn" onclick="switchTab('settings');generateKey()">🔑 生成 API 密钥</button>
+    <button class="btn" onclick="switchTab('settings');generateKey()">生成 API 密钥</button>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span> 快速开始</div>
+  <div class="section-body">
+    <div class="steps">
+      <div class="step"><div class="step-no">1</div><div class="step-body"><div class="step-title">导入 Cline 账号</div><div class="step-desc">在「导入账号」页通过 OAuth 登录或粘贴 Token，账号是代理的下游额度来源。</div></div></div>
+      <div class="step"><div class="step-no">2</div><div class="step-body"><div class="step-title">生成 API 密钥</div><div class="step-desc">在「代理设置 → API 密钥」生成 Key，用于客户端鉴权；未配置任何 Key 时允许无鉴权访问。</div></div></div>
+      <div class="step"><div class="step-no">3</div><div class="step-body"><div class="step-title">配置客户端</div><div class="step-desc">Base URL 填 <code id="quickstartApi">http://127.0.0.1:3457/v1</code>，模型选下方可用模型列表中的任意 ID。</div></div></div>
+    </div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M9 12h6M12 9v6"/><circle cx="12" cy="12" r="9"/></svg></span> 接入端点</div>
+  <div class="section-body">
+    <div class="endpoint-list">
+      <div class="endpoint"><code>POST /v1/chat/completions</code><span>OpenAI Chat 格式，大多数工具直接可用</span></div>
+      <div class="endpoint"><code>POST /v1/messages</code><span>Anthropic Messages 格式，Claude Code / Cline 等客户端</span></div>
+      <div class="endpoint"><code>POST /v1/responses</code><span>OpenAI Responses 格式，Cursor 等客户端</span></div>
+      <div class="endpoint"><code>GET /v1/models</code><span>模型列表</span></div>
+    </div>
   </div>
 </div>
 </div>
 
 <div id="tab-accounts" class="tab-panel" style="display:none">
   <div class="flex justify-between" style="margin-bottom:16px">
-  <h2>👤 账号管理</h2>
+  <h2>账号管理</h2>
   <div style="display:flex;gap:8px">
-    <button class="btn btn-sm" onclick="exportAccounts()">📤 导出账号</button>
-    <button class="btn btn-primary btn-sm" onclick="switchTab('import')">➕ 添加</button>
-    <button class="btn btn-sm" onclick="loadAccounts()">🔄 刷新</button>
+    <button class="btn btn-sm" onclick="exportAccounts()">导出账号</button>
+    <button class="btn btn-primary btn-sm" onclick="switchTab('import')">添加</button>
+    <button class="btn btn-sm" onclick="loadAccounts()">刷新</button>
   </div>
 </div>
 <div class="hint" style="margin:-4px 0 16px;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(148,163,184,.05)">
-  ℹ️ <strong style="color:var(--text)">Tokens</strong>为本代理本地统计（输入+输出，上游返回 usage 时精确，否则按请求体估算），用于估算离官方限流还有多远；⚡ 测试按钮发起真实探测请求；↻ 重置按钮会<strong style="color:var(--text)">探测上游限流状态</strong>：若上游仍限流则保持冷却并提示恢复时间，探测通过才解除冷却并重置今日统计。
+  <strong style="color:var(--text)">Tokens</strong>为本代理本地统计（输入+输出，上游返回 usage 时精确，否则按请求体估算），用于估算离官方限流还有多远；「测试」按钮发起真实探测请求；「重置」按钮会<strong style="color:var(--text)">探测上游限流状态</strong>：若上游仍限流则保持冷却并提示恢复时间，探测通过才解除冷却并重置今日统计。
 </div>
 <div class="section">
   <div class="section-body" style="padding:6px">
@@ -257,18 +303,18 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div id="tab-import" class="tab-panel" style="display:none">
-<h2>📥 导入账号</h2>
+<h2>导入账号</h2>
 <div class="section">
   <div class="tabs" id="importTabs">
-    <div class="tab active" data-tab="oauth">🔑 OAuth 浏览器登录</div>
-    <div class="tab" data-tab="token">✏️ 手动输入 Token</div>
-    <div class="tab" data-tab="batch">📦 批量导入</div>
+    <div class="tab active" data-tab="oauth">OAuth 浏览器登录</div>
+    <div class="tab" data-tab="token">手动输入 Token</div>
+    <div class="tab" data-tab="batch">批量导入</div>
   </div>
 
   <div id="import-oauth" class="tab-content active">
     <p class="hint">通过浏览器完成 OAuth 认证，支持 Google/GitHub/邮箱登录，自动获取 refreshToken。</p>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="startOAuth()" id="oauthBtn">🚀 开始 OAuth 登录</button>
+      <button class="btn btn-primary" onclick="startOAuth()" id="oauthBtn">开始 OAuth 登录</button>
     </div>
     <div id="oauthProgress" style="display:none;margin-top:14px" class="oauth-card">
       <div style="display:flex;align-items:center;gap:14px">
@@ -298,7 +344,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="addByToken()">➕ 添加账号</button>
+      <button class="btn btn-primary" onclick="addByToken()">添加账号</button>
     </div>
     <div id="tokenResult" style="margin-top:8px"></div>
   </div>
@@ -312,8 +358,8 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="batchImport()">📦 导入全部</button>
-      <button class="btn" onclick="document.getElementById('fileInput2').click()">📄 选择文件</button>
+      <button class="btn btn-primary" onclick="batchImport()">导入全部</button>
+      <button class="btn" onclick="document.getElementById('fileInput2').click()">选择文件</button>
       <input type="file" id="fileInput2" accept=".json,.txt" style="display:none" onchange="handleFileImport(event)">
     </div>
     <div id="batchResult" style="margin-top:8px"></div>
@@ -322,14 +368,14 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div id="tab-settings" class="tab-panel" style="display:none">
-<h2>⚙️ 设置</h2>
+<h2>代理设置</h2>
 
 <div class="section">
-  <div class="section-title">🔑 API 密钥管理</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span> API 密钥管理</div>
   <div class="section-body">
     <p class="hint">生成的密钥可用于客户端访问代理 API（作为 x-api-key 或 Authorization 头）。</p>
     <div class="form-actions" style="margin-bottom:14px">
-      <button class="btn btn-success" onclick="generateKey()">➕ 生成新密钥</button>
+      <button class="btn btn-success" onclick="generateKey()">生成新密钥</button>
     </div>
     <div id="keysList"></div>
     <div id="keyGenResult" style="margin-top:8px"></div>
@@ -337,10 +383,10 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div class="section">
-  <div class="section-title">🧠 可用模型 <span id="modelsProbeInfo" class="probe-pill" style="font-weight:normal"></span></div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M12 12v3M8.5 13.5v0M15.5 13.5v0"/></svg></span> 可用模型 <span id="modelsProbeInfo" class="probe-pill" style="font-weight:normal"></span></div>
   <div class="section-body">
     <div class="flex" style="margin-bottom:10px;gap:10px">
-      <button class="btn btn-sm btn-primary" onclick="refreshModels()">🔄 刷新模型</button>
+      <button class="btn btn-sm btn-primary" onclick="refreshModels()">刷新模型</button>
       <span class="hint" style="margin:0">自动同步上游官方免费模型（60 秒），仅显示不消耗额度的模型</span>
     </div>
     <div id="modelsList">加载中...</div>
@@ -348,7 +394,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div class="section">
-  <div class="section-title">🔧 代理配置</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4M4.9 4.9l2.8 2.8m8.6 8.6 2.8 2.8m0-14.2-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg></span> 基础配置</div>
   <div class="section-body">
     <div class="form-row">
       <div class="field"><label>监听地址</label><input type="text" id="settingAddr" disabled></div>
@@ -356,7 +402,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
         <label>默认模型</label>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="settingDefModel" style="flex:1;font-family:'JetBrains Mono',Consolas,monospace"></select>
-          <button class="btn btn-sm btn-primary" onclick="saveDefaultModel()">💾 保存</button>
+          <button class="btn btn-sm btn-primary" onclick="saveDefaultModel()">保存</button>
         </div>
       </div>
     </div>
@@ -378,7 +424,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div class="section">
-  <div class="section-title">📨 请求头配置（模拟 Cline CLI 发出）</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span> 请求头配置（模拟 Cline CLI 发出）</div>
   <div class="section-body">
     <div class="table-wrap">
     <table>
@@ -389,20 +435,20 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
     </table>
     </div>
     <div class="form-actions">
-      <button class="btn btn-sm" onclick="addHeaderRow()">➕ 添加请求头</button>
-      <button class="btn btn-sm btn-primary" onclick="saveHeaders()">💾 保存请求头</button>
+      <button class="btn btn-sm" onclick="addHeaderRow()">添加请求头</button>
+      <button class="btn btn-sm btn-primary" onclick="saveHeaders()">保存请求头</button>
     </div>
     <div class="hint">这些请求头会附加到所有转发给 Cline API 的请求中，以模拟官方客户端行为。</div>
     <div id="headerSaveResult" style="margin-top:8px"></div>
   </div>
 </div>
 
-<div class="section">
-  <div class="section-title">🗑️ 危险操作</div>
+<div class="section danger-zone">
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span> 危险操作</div>
   <div class="section-body">
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-danger" onclick="deleteAllAccounts()">🗑️ 删除全部账号</button>
-      <button class="btn btn-danger" onclick="deleteAllKeys()">🗑️ 删除全部密钥</button>
+      <button class="btn btn-danger" onclick="deleteAllAccounts()">删除全部账号</button>
+      <button class="btn btn-danger" onclick="deleteAllKeys()">删除全部密钥</button>
     </div>
   </div>
 </div>
@@ -410,9 +456,11 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 
 <div id="tab-logs" class="tab-panel" style="display:none">
 <div class="flex justify-between" style="margin-bottom:16px">
-  <h2>📜 请求日志 <span class="probe-pill" style="font-weight:normal">最近 500 条，落盘 data/requests.jsonl</span></h2>
-  <div style="display:flex;gap:8px">
-    <button class="btn btn-sm" onclick="loadLogs()">🔄 刷新</button>
+  <h2>请求日志 <span class="probe-pill" style="font-weight:normal">最近 500 条，落盘 data/requests.jsonl</span></h2>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="auto-pill" id="logsAutoPill">自动刷新中</span>
+    <button class="btn btn-sm" onclick="toggleLogsAuto()" id="logsAutoBtn">暂停</button>
+    <button class="btn btn-sm" onclick="loadLogs()">刷新</button>
   </div>
 </div>
 <div class="section">
@@ -432,10 +480,10 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div id="tab-opencode" class="tab-panel" style="display:none">
-<h2>🌐 opencode 免费模型（统一网关）</h2>
+<h2>opencode 免费模型（统一网关）</h2>
 
 <div class="section">
-  <div class="section-title">🔄 上游配置</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14.5 14.5 0 0 1 0 18 14.5 14.5 0 0 1 0-18z"/></svg></span> 上游配置</div>
   <div class="section-body">
     <div class="form-row">
       <div class="field"><label>启用 opencode 上游</label>
@@ -457,12 +505,12 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
     <div class="form-row">
       <div class="field"><label>代理冷却</label><span id="ocCooldownInfo" class="hint" style="margin:0;align-self:center">-</span></div>
     </div>
-    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存配置</button></div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">保存配置</button></div>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-title">🛡️ 限流防御</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> 限流防御</div>
   <div class="section-body">
     <div class="form-row">
       <div class="field"><label>最大并发</label><input type="text" id="ocMaxConc" placeholder="8"></div>
@@ -478,12 +526,12 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
       <div class="field"><label>转移窗口(分钟)</label><input type="text" id="ocFailoverMinutes" placeholder="5"></div>
       <div class="field"><label>当前状态</label><span id="ocFailoverInfo" class="stat-mini" style="align-self:center">-</span></div>
     </div>
-    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存限流配置</button></div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">保存限流配置</button></div>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-title">🗜️ 上下文压缩（opencode 官方机制）</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2M4 8v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M4 8h16"/><path d="M10 12h4"/></svg></span> 上下文压缩（opencode 官方机制）</div>
   <div class="section-body">
     <div class="form-row">
       <div class="field"><label>自动压缩</label>
@@ -498,13 +546,13 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
     <div class="form-row">
       <div class="field"><label>摘要上限</label><input type="text" id="ocMaxSummary" placeholder="4096"></div>
     </div>
-    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">💾 保存压缩配置</button></div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveOcConfig()">保存压缩配置</button></div>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-title">🧠 opencode 模型列表
-    <button class="btn btn-sm" onclick="refreshOcModels()" style="margin-left:auto">🔄 手动同步</button>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span> opencode 模型列表
+    <button class="btn btn-sm" onclick="refreshOcModels()" style="margin-left:auto">手动同步</button>
   </div>
   <div class="section-body" style="padding:6px">
     <div id="ocModelsList" style="padding:12px">加载中...</div>
@@ -512,7 +560,7 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 
 <div class="section">
-  <div class="section-title">📊 opencode 统计</div>
+  <div class="section-title"><span class="sec-ico"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span> opencode 统计</div>
   <div class="section-body">
     <div class="table-wrap"><div id="ocStatsBox"></div></div>
     <div id="ocModelStatsBox" style="margin-top:14px"></div>
@@ -536,11 +584,11 @@ function applyTheme(t) {
   if (t === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
     const ic = document.getElementById('themeIcon');
-    if (ic) ic.textContent = '🌙';
+    if (ic) ic.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   } else {
     document.documentElement.setAttribute('data-theme', 'light');
     const ic = document.getElementById('themeIcon');
-    if (ic) ic.textContent = '☀️';
+    if (ic) ic.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   }
 }
 function toggleTheme() {
@@ -560,7 +608,10 @@ const fmtTokens = n => {
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
 };
-if (window.location.host) _('footerApiAddr').textContent = 'http://' + window.location.host;
+if (window.location.host) {
+  _('footerApiAddr').textContent = 'http://' + window.location.host;
+  _('quickstartApi').textContent = 'http://' + window.location.host + '/v1';
+}
 
 function toast(msg, t, duration) {
   const el = _('toast');
@@ -661,9 +712,9 @@ async function loadAccounts() {
         '<td class="mono" style="font-size:11px">' + lu + '</td>' +
         '<td class="mono" style="font-size:11px">' + cr + '</td>' +
         '<td style="white-space:nowrap">' +
-          '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\', this)" title="测试账号是否可用（成功会清除冷却/过期状态）">⚡</button> ' +
-          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\', this)" title="检测限流并解除：探测上游，若仍限流则保持冷却并提示恢复时间">↻</button> ' +
-          '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">✕</button>' +
+          '<button class="btn btn-sm" onclick="testAccount(\'' + a.accountId + '\', this)" title="测试账号是否可用（成功会清除冷却/过期状态）">测试</button> ' +
+          '<button class="btn btn-sm" onclick="resetAccount(\'' + a.accountId + '\', this)" title="检测限流并解除：探测上游，若仍限流则保持冷却并提示恢复时间">重置</button> ' +
+          '<button class="btn btn-sm btn-danger" onclick="deleteAccount(\'' + a.accountId + '\')" title="删除">删除</button>' +
         '</td></tr>';
     }).join('');
   } catch (e) { toast('加载账号失败: ' + e.message, 'error'); }
@@ -722,7 +773,7 @@ async function resetAccount(id, btn) {
 }
 
 async function deleteAllAccounts() {
-  if (!confirm('⚠️ 确定删除所有账号？不可撤销！')) return;
+  if (!confirm('确定删除所有账号？此操作不可撤销！')) return;
   try {
     await api('POST', '/accounts/delete-all', {});
     toast('全部账号已删除', 'success');
@@ -760,10 +811,10 @@ async function startOAuth() {
         if (r.data.done) {
           clearInterval(poll);
           btn.disabled = false;
-          btn.innerHTML = '🚀 开始 OAuth 登录';
+          btn.innerHTML = '开始 OAuth 登录';
           if (r.data.success) {
             _('oauthProgress').style.display = 'none';
-            _('oauthResult').innerHTML = '<div style="color:var(--accent2);font-weight:600;font-size:14px">✓ 账号添加成功: ' + esc(r.data.email) + '</div>';
+            _('oauthResult').innerHTML = '<div style="color:var(--accent2);font-weight:600;font-size:14px">账号添加成功: ' + esc(r.data.email) + '</div>';
             _('oauthResult').style.display = 'block';
             loadAccounts(); loadStats();
             toast('账号添加成功！', 'success');
@@ -776,7 +827,7 @@ async function startOAuth() {
     }, 2000);
   } catch (e) {
     btn.disabled = false;
-    btn.innerHTML = '🚀 开始 OAuth 登录';
+    btn.innerHTML = '开始 OAuth 登录';
     _('oauthStatus').textContent = '错误: ' + e.message;
     toast('OAuth 失败: ' + e.message, 'error');
   }
@@ -833,13 +884,13 @@ async function loadKeys() {
     const keys = d.data.keys;
     const el = _('keysList');
     if (!keys || keys.length === 0) {
-      el.innerHTML = '<div class="empty-state"><span class="icon">🔑</span>暂无 API 密钥</div>';
+      el.innerHTML = '<div class="empty-state"><span class="icon"><svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span>暂无 API 密钥</div>';
       return;
     }
     el.innerHTML = keys.map(k =>
       '<div class="flex" style="margin-bottom:8px">' +
         '<span class="key-display" style="flex:1" onclick="copyText(\'' + k + '\')" title="点击复制">' + esc(k) + '</span>' +
-        '<button class="btn btn-sm btn-danger" onclick="deleteKey(\'' + k + '\')">✕</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="deleteKey(\'' + k + '\')">删除</button>' +
       '</div>'
     ).join('');
   } catch (e) { _('keysList').innerHTML = '<div class="empty">加载失败</div>'; }
@@ -851,7 +902,7 @@ async function generateKey() {
     const key = d.data.key;
     _('keyGenResult').innerHTML =
       '<div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:10px;padding:12px">' +
-        '<div style="color:var(--accent2);font-weight:600;margin-bottom:8px">✓ 新密钥已生成（点击复制）</div>' +
+        '<div style="color:var(--accent2);font-weight:600;margin-bottom:8px">新密钥已生成（点击复制）</div>' +
         '<div class="key-display" onclick="copyText(\'' + key + '\')">' + esc(key) + '</div>' +
       '</div>';
     loadKeys();
@@ -891,6 +942,16 @@ function copyText(t) {
 // ========== 请求日志 ==========
 const ROUTE_LABEL = { zen: 'opencode', cline: 'cline 池', admin: '管理', meta: '元信息', other: '其他' };
 const STATUS_CLASS = s => s >= 500 ? 'color:var(--danger)' : (s >= 400 ? 'color:var(--amber)' : 'color:var(--accent2)');
+let logsAuto = true;
+
+function toggleLogsAuto() {
+  logsAuto = !logsAuto;
+  _('logsAutoBtn').textContent = logsAuto ? '暂停' : '恢复';
+  const pill = _('logsAutoPill');
+  pill.textContent = logsAuto ? '自动刷新中' : '已暂停';
+  pill.classList.toggle('paused', !logsAuto);
+  if (logsAuto) loadLogs();
+}
 
 async function loadLogs() {
   try {
@@ -946,7 +1007,7 @@ function addHeaderRow() {
   tr.innerHTML =
     '<td><input type="text" class="header-key" placeholder="Header-Name" style="font-size:12px;font-family:monospace"></td>' +
     '<td><input type="text" class="header-val" placeholder="value" style="font-size:12px;font-family:monospace"></td>' +
-    '<td><button class="btn btn-sm btn-danger" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+    '<td><button class="btn btn-sm btn-danger" onclick="this.closest(\'tr\').remove()">删除</button></td>';
   tbody.appendChild(tr);
 }
 
@@ -970,7 +1031,7 @@ async function saveHeaders() {
     const d = await api('POST', '/config/update', { headers });
     toast('请求头已保存', 'success');
     _('headerSaveResult').innerHTML =
-      '<div style="color:var(--accent2);font-size:12px">✓ 已保存 ' + Object.keys(d.data.headers).length + ' 个请求头</div>';
+      '<div style="color:var(--accent2);font-size:12px">已保存 ' + Object.keys(d.data.headers).length + ' 个请求头</div>';
     setTimeout(() => _('headerSaveResult').innerHTML = '', 5000);
     loadConfig();
   } catch (e) { toast('保存失败: ' + e.message, 'error'); }
@@ -1013,7 +1074,7 @@ async function refreshModels() {
   try {
     _('modelsProbeInfo').textContent = '· 同步中...';
     const d = await api('POST', '/models/refresh');
-    toast(d.data.message || '同步已开始', 'info');
+    toast(d.message || '同步已开始', 'info');
     setTimeout(loadModels, 3000);
   } catch (e) { toast('刷新失败: ' + e.message, 'error'); _('modelsProbeInfo').textContent = ''; }
 }
@@ -1059,7 +1120,7 @@ async function loadConfig() {
         '<tr>' +
           '<td><input type="text" class="header-key" value="' + esc(k) + '" style="font-size:12px;font-family:monospace;width:100%"></td>' +
           '<td><input type="text" class="header-val" value="' + esc(v) + '" style="font-size:12px;font-family:monospace;width:100%"></td>' +
-          '<td><button class="btn btn-sm btn-danger" onclick="this.closest(\'tr\').remove()">✕</button></td>' +
+          '<td><button class="btn btn-sm btn-danger" onclick="this.closest(\'tr\').remove()">删除</button></td>' +
         '</tr>'
       ).join('');
     }
@@ -1088,8 +1149,8 @@ async function loadOcConfig() {
     _('ocMaxSummary').value = c.compaction ? c.compaction.maxSummary : 4096;
     const rt = c.runtime || {};
     _('ocFailoverInfo').innerHTML = rt.failoverActive
-      ? '<span style="color:var(--danger)">🔴 故障转移中 (opencode 不可用, 请求走 cline 池)</span>'
-      : '<span style="color:var(--accent2)">🟢 正常</span>';
+      ? '<span style="color:var(--danger)">故障转移中 (opencode 不可用, 请求走 cline 池)</span>'
+      : '<span style="color:var(--accent2)">正常</span>';
     const cd = rt.proxyCooldowns || {};
     const keys = Object.keys(cd);
     _('ocCooldownInfo').textContent = keys.length
@@ -1171,7 +1232,7 @@ loadModels();
 loadConfig();
 setInterval(() => { loadStats(); }, 10000);
 setInterval(() => { loadOcStats(); }, 15000);
-setInterval(() => { if (_('tab-logs').style.display !== 'none') loadLogs(); }, 8000);
+setInterval(() => { if (logsAuto && _('tab-logs').style.display !== 'none') loadLogs(); }, 8000);
 </script>
 </body>
 </html>`
