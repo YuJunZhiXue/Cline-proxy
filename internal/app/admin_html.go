@@ -1013,7 +1013,7 @@ async function refreshModels() {
   try {
     _('modelsProbeInfo').textContent = '· 同步中...';
     const d = await api('POST', '/models/refresh');
-    toast(d.data.message || '同步已开始', 'info');
+    toast(d.message || (d.data && d.data.message) || '同步已开始', 'info');
     setTimeout(loadModels, 3000);
   } catch (e) { toast('刷新失败: ' + e.message, 'error'); _('modelsProbeInfo').textContent = ''; }
 }
