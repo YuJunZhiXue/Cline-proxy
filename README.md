@@ -1,6 +1,6 @@
 # Cline Go Proxy
 
-Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中文管理后台。集成 **opencode opencode 免费模型** 统一网关：一个二进制同时服务 Cline 账号池与 zen free 模型，按 model 自动路由。
+Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中文管理后台。集成 **opencode opencode 免费模型** 和 **ClinePass Provider**：一个二进制同时服务 Cline 账号池、Zen free 模型、ClinePass API Key 与 Codex 上游，按 model 自动路由。
 
 ## 功能
 
@@ -11,11 +11,13 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 - **多 IP 轮询出口**：zen 上游支持 http/https/socks5 代理池，round_robin/random/fill 策略，绕过单 IP 匿名额度限制
 - **token 统计与日志入库**：每请求 JSONL 落盘（`zen-stats.jsonl`），今日/累计聚合、按模型分布，管理后台实时展示
 - **多账号轮询**：自动在多个 Cline 账号间切换负载（支持 `round_robin` / `fill` / `random` 策略）
+- **ClinePass Provider Routing**：独立 API Key 池，支持 `single` / `round_robin`，每个模型可配置 `planner` / `direct` 管道，以及 `strict` / `preferred` / `auto` 和 exclude；服务器策略默认不接受客户端 Provider 覆盖
 - **中文管理后台**：浏览器访问 `/admin/` 管理账号、API Key、模型配置、请求头、代理设置；`/admin/` 的「opencode 免费模型」页统一管理 zen 上游、代理池、压缩参数、模型与统计（原独立页已合并）
 - **API Key 鉴权**：保护代理端点，支持生成/删除多个 API Key
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词，不存在则使用客户端自带
 - **账号导入**：支持 OAuth 浏览器登录、手动 Token 输入、批量文件导入
 - **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`，zen 配置保存在 `.zen-config.json`
+- **ClinePass 持久化**：ClinePass API Key 与模型策略保存在 `.clinepass-config.json`，API Key 在后台和日志中均脱敏
 - **账号冷却与自动恢复**：命中 429 `INFERENCE_CAP_ERROR` 时自动解析 "Try again in 17h 59m" 并标记冷却，冷却到期自动恢复
 - **本地调用统计**：账号列表明确显示「本地今日/累计调用」
 - **多平台 CI/CD**：GitHub Actions 自动构建 6 平台二进制
@@ -134,7 +136,7 @@ Model:    deepseek/deepseek-v4-flash
 | `cline-pass/deepseek-v4-flash` | ❌ 403 · 需要订阅 | 需要 `cline-pass` 订阅 |
 | `cline-pass/qwen3.7-max` | ❌ 403 · 需要订阅 | 需要 `cline-pass` 订阅 |
 
-可在后台 **设置** → **默认模型** 中修改默认模型。
+这些 `cline-pass/*` 模型现在可以在后台 **ClinePass Provider** 中配置 API Key 和 Provider 策略后使用；未启用 ClinePass 时仍会按原行为返回上游错误。可在后台 **设置** → **默认模型** 中修改默认模型。
 
 ## CI/CD
 
@@ -172,13 +174,46 @@ Model:    deepseek-v4-flash-free
 
 超限时自动触发官方摘要压缩（`/admin/` → opencode 免费模型 页可调参数）；付费 zen 模型（如 `glm-5.1`）返回 400 拒绝。
 
-## 7. 项目结构
+### 7. ClinePass Provider Routing
+
+在 `/admin/` → **ClinePass Provider** 中添加 ClinePass API Key，并为模型保存策略。ClinePass API Key 与 Cline OAuth 账号池是两套独立身份体系；默认上游为：
+
+```text
+https://api.cline.bot/api/v1/chat/completions
+```
+
+例如把 `cline-pass/deepseek-v4.1-flash` 钉到 DeepSeek 官方 Provider：
+
+```text
+Model:    cline-pass/deepseek-v4.1-flash
+Pipeline: planner
+Mode:     strict
+Provider: deepseek
+```
+
+策略语义：
+
+- `strict`：仅允许配置中的 Provider（通常为一个），失败即失败，不偷偷切换其他 Provider。
+- `preferred`：只在配置的 `Providers` 范围内按顺序 fallback。代理逐个发送单 Provider 的严格请求，不允许 Gateway 扩展到列表之外。
+- `auto`：不主动钉 Provider，完全交给 ClinePass；配置 `Exclude` 且已有 Provider discovery 结果时，会将已知 Provider 减去 `Exclude` 转成白名单。
+
+`Exclude` 在请求链的任何阶段都生效：被排除的 Provider 不会出现在首轮、fallback、日志的候选列表或实际请求中。流式请求只有在客户端响应尚未开始前，才能因为明确的上游 HTTP/JSON/SSE 错误切换 Provider；一旦代理已经向客户端写入响应或 SSE 事件，绝不重新请求其他 Provider。`single` 账号模式使用后台选定的“当前单账号”，`round_robin` 才会轮询启用账号。
+
+Pipeline 为 `planner` 时写入 `providerOptions.gateway`，为 `direct` 时写入顶层 `provider`；`auto` 会从响应中的 `provider_metadata.gateway.routing` 或顶层 `provider` 识别并缓存实际 Pipeline。响应和 `/admin/` 请求日志会记录实际 Provider、实际模型以及 fallback attempts。客户端传入的 `provider` / `providerOptions` 默认会被清理，只有后台显式开启覆盖且服务器没有该模型策略时才会保留。
+
+`Sort` 统一使用 `cost`、`ttft`、`tps`；direct/OpenRouter 请求分别映射为 `price`、`latency`、`throughput`。
+
+Provider 可在后台执行 discovery 和逐个 validate，状态区分 `ok`、`limited`、`provider_invalid`、`auth_error`、`network_error`、`unknown` 等；临时限流不会被永久删除或拉黑。
+
+## 8. 项目结构
 
 ```
 ├── main.go               入口与 CLI 参数处理
 ├── proxy.go              HTTP 服务、API 路由与协议转换
 ├── models.go             官方免费模型同步（Cline）
 ├── zen.go                opencode 免费模型上游、三态路由、配置持久化
+├── clinepass.go          ClinePass 上游、Provider policy、discovery、fallback
+├── clinepass_admin.go    ClinePass 管理 API
 ├── compact.go            opencode 官方摘要压缩机制移植
 ├── proxy_pool.go         zen 上游多 IP 轮询出口（HTTP/SOCKS5 代理池）
 ├── stats.go              token 统计与 JSONL 日志入库

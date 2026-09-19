@@ -1,10 +1,10 @@
 package app
 
 import (
-	"cline-go-proxy/internal/cline"
-	"cline-go-proxy/internal/kit"
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/cline"
+	"cline-go-proxy/internal/kit"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -161,6 +161,24 @@ func StartProxy(host string, port int) error {
 				})
 			}
 		}
+		if getClinePassConfig().Enabled {
+			for _, cp := range clinePassModels() {
+				data = append(data, map[string]any{
+					"id":             cp["id"],
+					"object":         "model",
+					"created":        time.Now().UnixMilli(),
+					"owned_by":       "clinepass",
+					"source":         "clinepass",
+					"status":         "active",
+					"pipeline":       cp["pipeline"],
+					"routingMode":    cp["mode"],
+					"providers":      cp["providers"],
+					"actualProvider": cp["actualProvider"],
+					"actualModel":    cp["actualModel"],
+					"providerStatus": cp["providerStatus"],
+				})
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 	})
 	mux.HandleFunc("/v1/models", modelsHandler)
@@ -171,16 +189,6 @@ func StartProxy(host string, port int) error {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		if activeCount == 0 && len(loadPool().Accounts) == 0 {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{
-				"error": map[string]string{
-					"message": "No accounts in pool. Run with --add-account or POST /admin/login to add accounts.",
-					"type":    "auth_error",
-				},
-			})
-			return
-		}
-
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -205,14 +213,35 @@ func StartProxy(host string, port int) error {
 			}
 		}
 		model, _ := params["model"].(string)
+		if strings.TrimSpace(model) == "" {
+			model = getDefaultModel()
+			params["model"] = model
+		}
 		log.Printf("  client: stream=%v tools=%d model=%s", isStream, toolCount, model)
 
 		// Override system prompt from override.md for OpenAI format
 		applyOverride(params)
+		route := routeModel(model)
+		if activeCount == 0 && len(loadPool().Accounts) == 0 && route == "cline" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error": map[string]string{
+					"message": "No accounts in pool. Run with --add-account or POST /admin/login to add accounts.",
+					"type":    "auth_error",
+				},
+			})
+			return
+		}
 
 		// zen 免费模型路由
-		if route := routeModel(model); route == "zen" {
+		if route == "zen" {
 			handleZenChat(w, r, params)
+			return
+		} else if route == "codex" {
+			// codex 上游路由: 伪装为 Codex 桌面版客户端
+			handleCodexChat(w, params, isStream)
+			return
+		} else if route == "clinepass" {
+			handleClinePassChat(w, r, params, isStream)
 			return
 		} else if route == "reject" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -652,6 +681,10 @@ func getMsgCount(params map[string]any) int {
 }
 
 func handleStreamResponseWithUsage(w http.ResponseWriter, upstream *http.Response, onUsage func(map[string]any)) {
+	handleStreamResponseWithUsageMeta(w, upstream, onUsage, nil)
+}
+
+func handleStreamResponseWithUsageMeta(w http.ResponseWriter, upstream *http.Response, onUsage func(map[string]any), onPayload func(map[string]any)) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -689,6 +722,9 @@ func handleStreamResponseWithUsage(w http.ResponseWriter, upstream *http.Respons
 			// Try to normalize the response
 			var obj map[string]any
 			if err := json.Unmarshal([]byte(payload), &obj); err == nil {
+				if onPayload != nil {
+					onPayload(obj)
+				}
 				if onUsage != nil {
 					if u, ok := obj["usage"].(map[string]any); ok && len(u) > 0 {
 						onUsage(u)
@@ -911,19 +947,21 @@ type toolAccumulator struct {
 }
 
 type anthropicReq struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens"`
-	Messages    []anthropicMsg  `json:"messages"`
-	System      json.RawMessage `json:"system,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
-	TopK        int             `json:"top_k,omitempty"`
-	Stop        json.RawMessage `json:"stop_sequences,omitempty"`
-	Tools       json.RawMessage `json:"tools,omitempty"`
-	ToolChoice  json.RawMessage `json:"tool_choice,omitempty"`
-	Metadata    json.RawMessage `json:"metadata,omitempty"`
-	Extra       map[string]any  `json:"-"`
+	Model           string          `json:"model"`
+	MaxTokens       int             `json:"max_tokens"`
+	Messages        []anthropicMsg  `json:"messages"`
+	System          json.RawMessage `json:"system,omitempty"`
+	Stream          bool            `json:"stream,omitempty"`
+	Temperature     float64         `json:"temperature,omitempty"`
+	TopP            float64         `json:"top_p,omitempty"`
+	TopK            int             `json:"top_k,omitempty"`
+	Stop            json.RawMessage `json:"stop_sequences,omitempty"`
+	Tools           json.RawMessage `json:"tools,omitempty"`
+	ToolChoice      json.RawMessage `json:"tool_choice,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	Provider        map[string]any  `json:"provider,omitempty"`
+	ProviderOptions map[string]any  `json:"providerOptions,omitempty"`
+	Extra           map[string]any  `json:"-"`
 }
 
 func loadOverrideContent() string {
@@ -1012,6 +1050,12 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 	}
 	if req.ToolChoice != nil {
 		openAI["tool_choice"] = req.ToolChoice
+	}
+	if req.Provider != nil {
+		openAI["provider"] = req.Provider
+	}
+	if req.ProviderOptions != nil {
+		openAI["providerOptions"] = req.ProviderOptions
 	}
 
 	msgs := []any{}
@@ -1371,6 +1415,9 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if strings.TrimSpace(req.Model) == "" {
+		req.Model = getDefaultModel()
+	}
 
 	toolSchemas := extractToolSchemas(req.Tools)
 	if len(toolSchemas) > 0 {
@@ -1386,8 +1433,14 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	log.Printf("  anthropic: model=%s stream=%v msgs=%d", req.Model, req.Stream, len(req.Messages))
 
 	// zen 免费模型路由
-	if route := routeModel(req.Model); route == "zen" {
+	// 注: Anthropic 入口不路由 codex (codex 仅支持 Responses 协议,
+	// 直接转发会返回错误的 chat 格式), gpt-5 系列回落 cline 原有逻辑
+	route := routeModel(req.Model)
+	if route == "zen" {
 		handleZenAnthropic(w, r, req, openAIReq, toolSchemas)
+		return
+	} else if route == "clinepass" {
+		handleClinePassAnthropic(w, r, req, openAIReq, toolSchemas)
 		return
 	} else if route == "reject" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -1569,6 +1622,10 @@ func handleZenAnthropic(w http.ResponseWriter, r *http.Request, req anthropicReq
 }
 
 func handleAnthropicStreamWithUsage(w http.ResponseWriter, upstream *http.Response, modelName string, toolSchemas map[string]map[string]bool, onUsage func(map[string]any)) {
+	handleAnthropicStreamWithMeta(w, upstream, modelName, toolSchemas, onUsage, nil)
+}
+
+func handleAnthropicStreamWithMeta(w http.ResponseWriter, upstream *http.Response, modelName string, toolSchemas map[string]map[string]bool, onUsage func(map[string]any), onPayload func(map[string]any)) {
 	log.Printf("  anthropic stream: starting real-time forward")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -1698,6 +1755,9 @@ func handleAnthropicStreamWithUsage(w http.ResponseWriter, upstream *http.Respon
 			if d, ok := data.(map[string]any); ok {
 				obj = d
 			}
+		}
+		if onPayload != nil {
+			onPayload(obj)
 		}
 
 		if errPayload, ok := obj["error"]; ok {

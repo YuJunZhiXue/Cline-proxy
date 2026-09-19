@@ -1,8 +1,8 @@
 package app
 
 import (
-	"cline-go-proxy/internal/kit"
 	"bytes"
+	"cline-go-proxy/internal/kit"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -102,13 +102,25 @@ func resolveZenFreeModel(id string) (*ZenModel, bool) {
 	return m, true
 }
 
-// routeModel 决定请求走哪个上游: "zen" / "cline" / "reject"
+// routeModel 决定请求走哪个上游: "codex" / "clinepass" / "zen" / "cline" / "reject"
 // zen 免费模型 -> zen; zen 付费模型 -> reject(400); 其他 -> cline
 // 故障转移: zen 连续失败期间,zen 免费模型请求临时路由到 cline 账号池
 func routeModel(id string) string {
 	id = strings.TrimSpace(id)
+	if id == "" {
+		id = getDefaultModel()
+	}
 	initZenModels()
 	cfg := getZenConfig()
+	// codex 上游路由优先于 zen/cline 解析: zen 动态同步的模型表可能包含
+	// gpt-5 等同名付费条目, 若不先判断会误返回 reject
+	// 仅在 Codex 上游启用时生效, 未启用时继续走 zen/cline 原有解析
+	if codexHasModel(id) && getCodexConfig().Enabled {
+		return "codex"
+	}
+	if clinePassHasModel(id) {
+		return "clinepass"
+	}
 	if zm, ok := resolveZenModel(id); ok {
 		if isZenFreeModel(zm) {
 			// 与 cline 模型表冲突时(几乎不可能)走 cline

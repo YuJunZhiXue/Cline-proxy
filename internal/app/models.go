@@ -204,6 +204,9 @@ func syncModelsOnce() {
 
 func getDefaultModel() string {
 	initModelsCache()
+	if clinePassHasModel(defaultModel) {
+		return defaultModel
+	}
 	modelsMu.Lock()
 	defer modelsMu.Unlock()
 
@@ -223,6 +226,9 @@ func normalizeRequestModel(id string) string {
 	if id == "" {
 		return getDefaultModel()
 	}
+	if clinePassHasModel(id) {
+		return id
+	}
 	initModelsCache()
 	modelsMu.Lock()
 	_, ok := modelsCache[id]
@@ -238,15 +244,15 @@ func apiModelList() []map[string]any {
 	out := make([]map[string]any, 0, len(modelsCache))
 	for _, m := range getFreeModels() {
 		out = append(out, map[string]any{
-			"id":         m.ID,
-			"object":     "model",
-			"created":    time.Now().UnixMilli(),
-			"owned_by":   m.Provider,
-			"source":     m.Source,
-			"status":     m.Status,
-			"cost":       m.Cost,
+			"id":             m.ID,
+			"object":         "model",
+			"created":        time.Now().UnixMilli(),
+			"owned_by":       m.Provider,
+			"source":         m.Source,
+			"status":         m.Status,
+			"cost":           m.Cost,
 			"requiresStream": m.RequiresStream,
-			"syncedAt":   m.SyncedAt,
+			"syncedAt":       m.SyncedAt,
 		})
 	}
 	return out

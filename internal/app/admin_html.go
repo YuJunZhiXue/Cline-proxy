@@ -119,6 +119,10 @@ tbody tr:last-child td{border-bottom:none}
 .btn-danger{border-color:rgba(248,113,113,.4);color:var(--danger);background:transparent}
 .btn-danger:hover{background:rgba(248,113,113,.12);border-color:var(--danger)}
 .btn-sm{padding:3px 10px;font-size:12px;border-radius:7px}
+/* 状态徽章 */
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600}
+.badge-ok{background:rgba(5,150,105,.15);color:#10b981}
+.badge-err{background:rgba(248,113,113,.15);color:#f87171}
 
 /* ===== 表单 ===== */
 input,textarea,select{width:100%;padding:9px 13px;background:rgba(2,6,23,.4);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;transition:.15s}
@@ -200,6 +204,8 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 <div class="nav-item" data-tab="settings"><span class="nav-ico">⚙️</span> 设置</div>
 <div class="nav-item" data-tab="logs"><span class="nav-ico">📜</span> 请求日志</div>
 <div class="nav-item" data-tab="opencode"><span class="nav-ico">🌐</span> opencode 免费模型</div>
+<div class="nav-item" data-tab="clinepass"><span class="nav-ico">🧭</span> ClinePass Provider</div>
+<div class="nav-item" data-tab="codex"><span class="nav-ico">🚀</span> Codex 上游</div>
 <div class="sidebar-footer">
   <div>管理面板: <a href="/admin/">/admin/</a></div>
   <div>API 地址: <span id="footerApiAddr">http://127.0.0.1:3457</span></div>
@@ -420,10 +426,10 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
     <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>时间</th><th>来源</th><th>方法</th><th>路径</th><th>模型</th><th>路由</th><th>状态</th><th>耗时</th></tr>
+        <tr><th>时间</th><th>来源</th><th>方法</th><th>路径</th><th>模型</th><th>路由</th><th>Upstream</th><th>Pipeline</th><th>Mode</th><th>Actual Provider</th><th>状态</th><th>耗时</th></tr>
       </thead>
       <tbody id="logsTableBody">
-        <tr><td colspan="8" class="empty">加载中...</td></tr>
+        <tr><td colspan="12" class="empty">加载中...</td></tr>
       </tbody>
     </table>
     </div>
@@ -520,7 +526,188 @@ body:not([data-theme="dark"]) .theme-toggle .dark-label{display:none}
 </div>
 </div>
 
+<div id="tab-clinepass" class="tab-panel" style="display:none">
+<h2>🧭 ClinePass Provider Routing</h2>
+<div class="hint" style="margin:-8px 0 16px">ClinePass API Key、Provider 策略和 Cline OAuth/Codex 账号完全独立。默认由服务器策略决定 routing，客户端字段不会覆盖服务器配置。</div>
+
+<div class="section">
+  <div class="section-title">⚙️ ClinePass 配置</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>启用 ClinePass</label><select id="cpEnabled"><option value="true">开启</option><option value="false">关闭</option></select></div>
+      <div class="field"><label>账号模式</label><select id="cpAccountMode"><option value="single">single</option><option value="round_robin">round_robin</option></select></div>
+      <div class="field"><label>允许客户端覆盖 Provider</label><select id="cpAllowOverride"><option value="false">关闭（推荐）</option><option value="true">开启</option></select></div>
+    </div>
+    <div class="form-row"><div class="field"><label>Chat Completions Endpoint</label><input id="cpBaseURL" type="text" placeholder="https://api.cline.bot/api/v1/chat/completions"></div><div class="field"><label>当前单账号</label><span id="cpCurrentAccount" class="hint">未选择</span></div></div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveClinePassConfig()">💾 保存配置</button></div>
+  </div>
 </div>
+
+<div class="section">
+  <div class="section-title">🔑 API Key 管理</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>名称</label><input id="cpAccountName" placeholder="deepseek-main"></div>
+      <div class="field"><label>API Key</label><input id="cpAccountKey" type="password" placeholder="sk-..."></div>
+      <div class="field"><label>状态</label><select id="cpAccountEnabled"><option value="true">启用</option><option value="false">停用</option></select></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addClinePassAccount()">➕ 添加账号</button><button class="btn" onclick="loadClinePassAccounts()">🔄 刷新</button></div>
+    <div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>#</th><th>名称</th><th>API Key（脱敏）</th><th>状态</th><th>用量</th><th>最后使用</th><th>操作</th></tr></thead><tbody id="cpAccountsBody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody></table></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">🧩 模型 Provider 策略</div>
+  <div class="section-body">
+    <div class="form-row">
+      <div class="field"><label>模型 ID</label><input id="cpModel" placeholder="cline-pass/deepseek-v4.1-flash"></div>
+      <div class="field"><label>Pipeline</label><select id="cpPipeline"><option value="auto">auto</option><option value="planner">planner</option><option value="direct">direct</option></select></div>
+      <div class="field"><label>Routing Mode</label><select id="cpMode"><option value="auto">auto</option><option value="strict">strict</option><option value="preferred">preferred</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Providers（逗号分隔，按优先级）</label><input id="cpProviders" placeholder="deepseek,novita,fireworks"></div>
+      <div class="field"><label>Excluded（逗号分隔）</label><input id="cpExclude" placeholder="provider-to-skip"></div>
+      <div class="field"><label>Sort</label><select id="cpSort"><option value="none">none</option><option value="cost">cost</option><option value="ttft">ttft</option><option value="tps">tps</option></select></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveClinePassPolicy()">💾 保存策略</button><button class="btn" onclick="probeClinePassModel()">🔎 探测 Provider</button><button class="btn" onclick="validateClinePassModel()">✅ 校验 Provider</button></div>
+    <div id="cpProbeResult" class="hint"></div>
+    <div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Model</th><th>Pipeline</th><th>Mode</th><th>Providers</th><th>Excluded</th><th>Actual Provider</th><th>Provider Status</th><th>操作</th></tr></thead><tbody id="cpModelsBody"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody></table></div>
+  </div>
+</div>
+</div>
+
+<div id="tab-codex" class="tab-panel" style="display:none">
+<h2>🚀 Codex 上游（伪装 Codex 桌面版客户端）</h2>
+
+<div class="section">
+  <div class="section-title">⚙️ Codex 配置</div>
+  <div class="section-body">
+    <div style="display:grid;gap:12px">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="codex-enabled" style="width:18px;height:18px">
+        <span>启用 Codex 上游</span>
+      </label>
+      <div>
+        <label style="font-size:12px;color:var(--text2)">Originator（客户端标识）</label>
+        <input type="text" id="codex-originator" class="input" style="width:100%;margin-top:4px" value="codex_chatgpt_desktop">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div>
+          <label style="font-size:12px;color:var(--text2)">客户端版本</label>
+          <input type="text" id="codex-client-version" class="input" style="width:100%;margin-top:4px" value="0.154.0">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2)">OS 类型</label>
+          <input type="text" id="codex-os-type" class="input" style="width:100%;margin-top:4px" value="Windows">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2)">OS 版本</label>
+          <input type="text" id="codex-os-version" class="input" style="width:100%;margin-top:4px" value="11">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2)">架构</label>
+        <input type="text" id="codex-arch" class="input" style="width:100%;margin-top:4px" value="x86_64">
+      </div>
+      <button onclick="saveCodexConfig()" class="btn" style="margin-top:4px">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">📋 Codex 账号管理</div>
+  <div class="section-body">
+    <div style="margin-bottom:12px">
+      <details>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600">导入 auth.json / 手动添加 OAuth 账号</summary>
+        <div style="margin-top:12px;display:grid;gap:8px">
+          <div>
+            <label style="font-size:12px;color:var(--text2)">粘贴 ~/.codex/auth.json 内容（自动解析 refresh_token + account_id）</label>
+            <textarea id="codex-auth-json" placeholder='{"tokens":{"refresh_token":"...","access_token":"...","account_id":"..."}}' class="input" style="width:100%;margin-top:4px;height:80px;font-family:monospace;font-size:11px"></textarea>
+          </div>
+          <button onclick="addCodexAccountFromJSON()" class="btn">从 auth.json 导入</button>
+          <hr style="border-color:var(--border);margin:8px 0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label style="font-size:12px;color:var(--text2)">Refresh Token</label>
+              <input type="password" id="codex-refresh-token" class="input" style="width:100%;margin-top:4px">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text2)">Account ID（可选，自动从 JWT 提取）</label>
+              <input type="text" id="codex-account-id" class="input" style="width:100%;margin-top:4px">
+            </div>
+          </div>
+          <button onclick="addCodexAccountManual()" class="btn">手动添加</button>
+        </div>
+      </details>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600">添加自定义供应商（第三方 URL + API Key）</summary>
+        <div style="margin-top:12px;display:grid;gap:8px">
+          <div>
+            <label style="font-size:12px;color:var(--text2)">Base URL</label>
+            <input type="text" id="codex-custom-url" placeholder="https://your-provider.com/v1" class="input" style="width:100%;margin-top:4px">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2)">API Key</label>
+            <input type="password" id="codex-custom-apikey" placeholder="sk-..." class="input" style="width:100%;margin-top:4px">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2)">启用的模型</label>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <button type="button" class="btn btn-sm" onclick="fetchCodexModelsForAdd()">获取模型列表</button>
+              <span id="codex-custom-models-status" style="font-size:12px;color:var(--text2)"></span>
+            </div>
+            <div id="codex-custom-models-box" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;display:none"></div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2)">模型映射（JSON，如 {"gpt-5":"gpt-5-turbo"}，可选）</label>
+            <textarea id="codex-custom-mapping" placeholder='{"gpt-5":"gpt-5-turbo"}' class="input" style="width:100%;margin-top:4px;height:60px;font-family:monospace;font-size:11px"></textarea>
+          </div>
+          <button onclick="addCodexCustomAccount()" class="btn">添加供应商</button>
+        </div>
+      </details>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>类型</th><th>标识</th><th>模型</th><th>状态</th><th>用量</th><th>操作</th></tr></thead>
+        <tbody id="codex-accounts-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+<div id="codex-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius);padding:24px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto">
+    <h3 style="margin-bottom:16px;font-size:16px">编辑供应商</h3>
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="font-size:12px;color:var(--text2)">Base URL</label>
+        <input type="text" id="codex-edit-url" class="input" style="width:100%;margin-top:4px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2)">API Key（留空不修改）</label>
+        <input type="password" id="codex-edit-apikey" class="input" style="width:100%;margin-top:4px" placeholder="留空不修改">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2)">启用的模型</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+          <button type="button" class="btn btn-sm" onclick="fetchCodexModelsForEdit()">获取模型列表</button>
+          <span id="codex-edit-models-status" style="font-size:12px;color:var(--text2)"></span>
+        </div>
+        <div id="codex-edit-models-box" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px"></div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2)">模型映射（JSON，可选）</label>
+        <textarea id="codex-edit-mapping" class="input" style="width:100%;margin-top:4px;height:60px;font-family:monospace;font-size:11px" placeholder='{"gpt-5":"gpt-5-turbo"}'></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn" onclick="closeCodexEditModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveCodexCustomEdit()">保存</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -584,6 +771,8 @@ document.querySelectorAll('.nav-item').forEach(el => {
     if (el.dataset.tab === 'settings') { loadKeys(); loadModels(); loadConfig(); }
     if (el.dataset.tab === 'logs') loadLogs();
     if (el.dataset.tab === 'opencode') { loadOcConfig(); loadOcModels(); loadOcStats(); }
+    if (el.dataset.tab === 'clinepass') { loadClinePassConfig(); loadClinePassAccounts(); loadClinePassModels(); }
+    if (el.dataset.tab === 'codex') { loadCodexConfig(); loadCodexAccounts(); }
   });
 });
 
@@ -598,6 +787,8 @@ function switchTab(name) {
   if (name === 'settings') { loadKeys(); loadModels(); }
   if (name === 'logs') loadLogs();
   if (name === 'opencode') { loadOcConfig(); loadOcModels(); loadOcStats(); }
+  if (name === 'clinepass') { loadClinePassConfig(); loadClinePassAccounts(); loadClinePassModels(); }
+  if (name === 'codex') { loadCodexConfig(); loadCodexAccounts(); }
 }
 
 // 导入子标签
@@ -889,7 +1080,7 @@ function copyText(t) {
 }
 
 // ========== 请求日志 ==========
-const ROUTE_LABEL = { zen: 'opencode', cline: 'cline 池', admin: '管理', meta: '元信息', other: '其他' };
+const ROUTE_LABEL = { zen: 'opencode', cline: 'cline 池', clinepass: 'ClinePass', admin: '管理', meta: '元信息', other: '其他' };
 const STATUS_CLASS = s => s >= 500 ? 'color:var(--danger)' : (s >= 400 ? 'color:var(--amber)' : 'color:var(--accent2)');
 
 async function loadLogs() {
@@ -897,7 +1088,7 @@ async function loadLogs() {
     const d = await api('GET', '/logs');
     const logs = d.data.logs || [];
     const tbody = _('logsTableBody');
-    if (!logs.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无请求记录</td></tr>'; return; }
+    if (!logs.length) { tbody.innerHTML = '<tr><td colspan="12" class="empty">暂无请求记录</td></tr>'; return; }
     tbody.innerHTML = logs.map(l => {
       const t = l.time ? new Date(l.time).toLocaleString('zh-CN') : '-';
       const route = ROUTE_LABEL[l.route] || l.route || '-';
@@ -909,11 +1100,15 @@ async function loadLogs() {
         '<td class="mono" style="font-size:11px">' + esc(l.path || '-') + '</td>' +
         '<td class="mono" style="font-size:12px">' + esc(l.model || '-') + '</td>' +
         '<td><span class="model-tag">' + esc(route) + '</span></td>' +
+        '<td>' + esc(l.upstream || '-') + '</td>' +
+        '<td>' + esc(l.pipeline || '-') + '</td>' +
+        '<td>' + esc(l.routingMode || '-') + '</td>' +
+        '<td>' + esc(l.actualProvider || '-') + '</td>' +
         '<td style="font-weight:600;color:' + STATUS_CLASS(st) + '">' + st + '</td>' +
-        '<td class="mono" style="font-size:11px">' + (l.durationMs != null ? l.durationMs + ' ms' : '-') + '</td>' +
+        '<td class="mono" style="font-size:11px">' + (l.duration_ms != null ? l.duration_ms + ' ms' : '-') + '</td>' +
       '</tr>';
     }).join('');
-  } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="empty">加载失败</td></tr>'; }
+  } catch (e) { tbody.innerHTML = '<tr><td colspan="12" class="empty">加载失败</td></tr>'; }
 }
 
 // ========== 导出账号 ==========
@@ -1163,15 +1358,344 @@ async function loadOcStats() {
   } catch (e) { /* ignore */ }
 }
 
+// ========== ClinePass Provider 管理 ==========
+async function loadClinePassConfig() {
+  try {
+    const d = await api('GET', '/clinepass/config');
+    const c = d.data || {};
+    _('cpEnabled').value = String(c.enabled);
+    _('cpAccountMode').value = c.accountMode || 'round_robin';
+    _('cpAllowOverride').value = String(c.allowClientProviderOverride);
+    _('cpBaseURL').value = c.baseURL || '';
+  } catch (e) { /* ignore */ }
+}
+async function saveClinePassConfig() {
+  try {
+    await api('POST', '/clinepass/config/update', {
+      enabled: _('cpEnabled').value === 'true',
+      accountMode: _('cpAccountMode').value,
+      allowClientProviderOverride: _('cpAllowOverride').value === 'true',
+      baseURL: _('cpBaseURL').value.trim()
+    });
+    toast('ClinePass 配置已保存', 'success');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+async function loadClinePassAccounts() {
+  try {
+    const d = await api('GET', '/clinepass/accounts');
+    const list = d.data || [];
+    const tb = _('cpAccountsBody');
+    const current = list.find(a => a.current);
+    if (_('cpCurrentAccount')) _('cpCurrentAccount').textContent = current ? current.name : '未选择';
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">暂无 ClinePass API Key</td></tr>'; return; }
+    tb.innerHTML = list.map(a => '<tr>' +
+      '<td>' + a.index + '</td><td>' + esc(a.name) + '</td><td class="mono">' + esc(a.apiKey) + '</td>' +
+      '<td><span class="badge ' + (a.enabled ? 'badge-ok' : 'badge-err') + '">' + (a.enabled ? '启用' : '停用') + '</span></td>' +
+      '<td>' + (a.usageCount || 0) + '</td><td>' + (a.lastUsed ? new Date(a.lastUsed).toLocaleString('zh-CN') : '-') + '</td>' +
+      '<td>' + (a.current ? '<span class="badge badge-ok">当前</span> ' : '') + '<button class="btn-sm" onclick="setClinePassCurrentAccount(' + a.index + ')">设为当前</button> <button class="btn-sm" onclick="testClinePassAccount(' + a.index + ')">测试</button> <button class="btn-sm" onclick="toggleClinePassAccount(' + a.index + ',' + (!a.enabled) + ')">' + (a.enabled ? '停用' : '启用') + '</button> <button class="btn-sm btn-danger" onclick="deleteClinePassAccount(' + a.index + ')">删除</button></td>' +
+      '</tr>').join('');
+  } catch (e) { _('cpAccountsBody').innerHTML = '<tr><td colspan="7" class="empty">加载失败</td></tr>'; }
+}
+async function setClinePassCurrentAccount(index) {
+  try { await api('POST', '/clinepass/config/update', {currentIdx:index}); toast('当前单账号已更新', 'success'); loadClinePassConfig(); loadClinePassAccounts(); }
+  catch (e) { toast('设置失败: ' + e.message, 'error'); }
+}
+async function addClinePassAccount() {
+  const name = _('cpAccountName').value.trim(), apiKey = _('cpAccountKey').value.trim();
+  if (!name || !apiKey) { toast('名称和 API Key 不能为空', 'error'); return; }
+  try {
+    await api('POST', '/clinepass/accounts/add', {name, apiKey, enabled: _('cpAccountEnabled').value === 'true'});
+    _('cpAccountName').value = ''; _('cpAccountKey').value = '';
+    toast('ClinePass 账号已添加', 'success'); loadClinePassAccounts();
+  } catch (e) { toast('添加失败: ' + e.message, 'error'); }
+}
+async function toggleClinePassAccount(index, enabled) {
+  try { await api('POST', '/clinepass/accounts/update', {index, enabled}); loadClinePassAccounts(); }
+  catch (e) { toast('更新失败: ' + e.message, 'error'); }
+}
+async function deleteClinePassAccount(index) {
+  if (!confirm('确认删除此 ClinePass API Key？')) return;
+  try { await api('POST', '/clinepass/accounts/delete', {index}); toast('账号已删除', 'success'); loadClinePassAccounts(); }
+  catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+async function testClinePassAccount(index) {
+  try { const d = await api('POST', '/clinepass/accounts/test', {index, model: _('cpModel').value.trim()}); toast('测试结果: ' + (d.data.status || 'ok'), d.data.status === 'ok' ? 'success' : 'warning'); }
+  catch (e) { toast('测试失败: ' + e.message, 'error'); }
+}
+function splitProviders(value) { return value.split(',').map(s => s.trim()).filter(Boolean); }
+function setClinePassPolicyForm(model, policy) {
+  _('cpModel').value = model || '';
+  _('cpPipeline').value = policy.pipeline || 'auto';
+  _('cpMode').value = policy.mode || 'auto';
+  _('cpProviders').value = (policy.providers || []).join(',');
+  _('cpExclude').value = (policy.exclude || []).join(',');
+  _('cpSort').value = policy.sort || 'none';
+}
+let clinePassModelCache = {};
+function selectClinePassModel(model) {
+  const item = clinePassModelCache[model];
+  if (item) setClinePassPolicyForm(model, {pipeline:item.pipeline, mode:item.mode, providers:item.providers||[], exclude:item.exclude||[], sort:item.sort||'none'});
+}
+async function loadClinePassModels() {
+  try {
+    const d = await api('GET', '/clinepass/models');
+    const list = (d.data && d.data.models) || [];
+    const tb = _('cpModelsBody');
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无模型策略。可先填写模型 ID 并保存。</td></tr>'; return; }
+    clinePassModelCache = {};
+    list.forEach(m => { clinePassModelCache[m.id] = m; });
+    tb.innerHTML = list.map(m => {
+      const statuses = m.providerStatus || {};
+      const statusText = Object.keys(statuses).map(k => esc(k) + ':' + esc(statuses[k])).join(', ') || '-';
+      const modelArg = String(m.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return '<tr>' +
+        '<td class="mono">' + esc(m.id) + '</td><td>' + esc(m.pipeline || 'unknown') + '</td><td>' + esc(m.mode || 'auto') + '</td>' +
+        '<td>' + (m.providers || []).map(p => '<span class="model-tag pass">' + esc(p) + '</span>').join('') + '</td>' +
+        '<td>' + (m.exclude || []).map(p => '<span class="model-tag">' + esc(p) + '</span>').join('') + '</td>' +
+        '<td>' + esc(m.actualProvider || '-') + '</td><td class="mono">' + statusText + '</td><td><button class="btn-sm" onclick="selectClinePassModel(\'' + modelArg + '\')">编辑</button></td></tr>';
+    }).join('');
+  } catch (e) { _('cpModelsBody').innerHTML = '<tr><td colspan="8" class="empty">加载失败</td></tr>'; }
+}
+async function saveClinePassPolicy() {
+  const model = _('cpModel').value.trim();
+  if (!model) { toast('请输入模型 ID', 'error'); return; }
+  const policy = {pipeline:_('cpPipeline').value, mode:_('cpMode').value, providers:splitProviders(_('cpProviders').value), exclude:splitProviders(_('cpExclude').value), sort:_('cpSort').value};
+  try { await api('POST', '/clinepass/models/policy', {model, policy}); toast('模型策略已保存', 'success'); loadClinePassModels(); }
+  catch (e) { toast('保存策略失败: ' + e.message, 'error'); }
+}
+async function probeClinePassModel() {
+  const model = _('cpModel').value.trim();
+  if (!model) { toast('请输入模型 ID', 'error'); return; }
+  _('cpProbeResult').textContent = '探测中...';
+  try {
+    const d = await api('POST', '/clinepass/models/probe', {model, pipeline:_('cpPipeline').value});
+    const x = d.data || {}; _('cpProviders').value = (x.providers || []).join(',');
+    _('cpPipeline').value = x.pipeline || _('cpPipeline').value;
+    _('cpProbeResult').textContent = '发现 Provider: ' + ((x.providers || []).join(', ') || 'unknown') + ' · Pipeline: ' + (x.pipeline || 'unknown');
+    loadClinePassModels();
+  } catch (e) { _('cpProbeResult').textContent = '探测失败: ' + e.message; }
+}
+async function validateClinePassModel() {
+  const model = _('cpModel').value.trim();
+  if (!model) { toast('请输入模型 ID', 'error'); return; }
+  try {
+    const d = await api('POST', '/clinepass/models/validate', {model, providers:splitProviders(_('cpProviders').value)});
+    const statuses = d.data.statuses || {}; _('cpProbeResult').textContent = Object.keys(statuses).map(k => k + ': ' + statuses[k]).join(' · '); loadClinePassModels();
+  } catch (e) { toast('校验失败: ' + e.message, 'error'); }
+}
+
+// ========== Codex 上游管理 ==========
+function loadCodexConfig() {
+  fetch(API + '/codex/config').then(r => r.json()).then(r => {
+    if (!r.success) return;
+    const d = r.data;
+    _('codex-enabled').checked = d.enabled;
+    _('codex-originator').value = d.originator || 'codex_chatgpt_desktop';
+    _('codex-client-version').value = d.clientVersion || '0.154.0';
+    _('codex-os-type').value = d.osType || 'Windows';
+    _('codex-os-version').value = d.osVersion || '11';
+    _('codex-arch').value = d.arch || 'x86_64';
+  });
+}
+function saveCodexConfig() {
+  const body = {
+    enabled: _('codex-enabled').checked,
+    originator: _('codex-originator').value,
+    clientVersion: _('codex-client-version').value,
+    osType: _('codex-os-type').value,
+    osVersion: _('codex-os-version').value,
+    arch: _('codex-arch').value,
+  };
+  fetch(API + '/codex/config/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{
+    toast(r.success ? 'Codex 配置已保存' : (r.error||'保存失败'));
+    if (r.success) loadCodexConfig();
+  });
+}
+function loadCodexAccounts() {
+  fetch(API + '/codex/accounts').then(r=>r.json()).then(r=>{
+    if (!r.success) return;
+    const tb = _('codex-accounts-tbody');
+    tb.innerHTML = '';
+    (r.data||[]).forEach(a => {
+      const isCustom = a.type === 'custom';
+      const ident = isCustom ? esc((a.customUrl||'').slice(0,40)) : esc(a.email||'-');
+      const models = isCustom ? (a.models||[]).join(', ') || '(全部)' : '-';
+      const actions = isCustom
+        ? '<button class="btn-sm" onclick="editCodexCustomAccount('+a.index+')">编辑</button> <button class="btn-sm btn-danger" onclick="deleteCodexAccount('+a.index+')">删除</button>'
+        : '<button class="btn-sm" onclick="refreshCodexAccount('+a.index+')">刷新</button> <button class="btn-sm btn-danger" onclick="deleteCodexAccount('+a.index+')">删除</button>';
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>'+a.index+'</td><td><span class="badge '+(isCustom?'badge-err':'badge-ok')+'">'+esc(a.type)+'</span></td><td style="font-family:monospace;font-size:11px">'+ident+'</td><td style="font-size:11px">'+esc(models)+'</td><td><span class="badge '+(a.status==='active'?'badge-ok':'badge-err')+'">'+esc(a.status)+'</span></td><td>'+a.usageCount+'</td><td>'+actions+'</td>';
+      tb.appendChild(tr);
+    });
+  });
+}
+function addCodexAccountFromJSON() {
+  const raw = _('codex-auth-json').value.trim();
+  if (!raw) { toast('请粘贴 auth.json 内容'); return; }
+  fetch(API + '/codex/accounts/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:raw}).then(r=>r.json()).then(r=>{
+    toast(r.success ? '账号导入成功' : (r.error||'导入失败'));
+    if (r.success) { _('codex-auth-json').value=''; loadCodexAccounts(); }
+  });
+}
+function addCodexAccountManual() {
+  const body = {refreshToken: _('codex-refresh-token').value, accountId: _('codex-account-id').value};
+  if (!body.refreshToken) { toast('请输入 Refresh Token'); return; }
+  fetch(API + '/codex/accounts/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{
+    toast(r.success ? '账号添加成功' : (r.error||'添加失败'));
+    if (r.success) { _('codex-refresh-token').value=''; _('codex-account-id').value=''; loadCodexAccounts(); }
+  });
+}
+// 渲染模型勾选列表
+function renderCodexModelCheckboxes(boxId, models, selected) {
+  const box = _(boxId);
+  if (!models || models.length === 0) {
+    box.innerHTML = '<span style="font-size:12px;color:var(--text2)">无可用模型</span>';
+    box.style.display = 'block';
+    return;
+  }
+  const selSet = new Set(selected || []);
+  box.innerHTML = models.map(m => {
+    const checked = selSet.has(m) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" value="'+esc(m)+'" '+checked+' style="width:16px;height:16px"> '+esc(m)+'</label>';
+  }).join('');
+  box.style.display = 'block';
+}
+// 获取勾选的模型列表
+function getCheckedModels(boxId) {
+  const box = _(boxId);
+  return Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+}
+// 添加供应商: 获取模型列表
+function fetchCodexModelsForAdd() {
+  const url = _('codex-custom-url').value.trim();
+  const key = _('codex-custom-apikey').value.trim();
+  if (!url) { toast('请输入 Base URL'); return; }
+  if (!key) { toast('请输入 API Key'); return; }
+  const status = _('codex-custom-models-status');
+  status.textContent = '获取中...';
+  fetch(API + '/codex/models/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:url, apiKey:key})}).then(r=>r.json()).then(r=>{
+    if (r.success) {
+      const models = r.data.models || [];
+      status.textContent = '获取到 ' + models.length + ' 个模型';
+      renderCodexModelCheckboxes('codex-custom-models-box', models, models);
+    } else {
+      status.textContent = '';
+      toast(r.error || '获取失败');
+    }
+  }).catch(e => { status.textContent = ''; toast('网络错误'); });
+}
+function addCodexCustomAccount() {
+  const url = _('codex-custom-url').value.trim();
+  const key = _('codex-custom-apikey').value.trim();
+  const mappingStr = _('codex-custom-mapping').value.trim();
+  if (!url) { toast('请输入 Base URL'); return; }
+  if (!key) { toast('请输入 API Key'); return; }
+  const models = getCheckedModels('codex-custom-models-box');
+  let modelMapping = {};
+  if (mappingStr) {
+    try { modelMapping = JSON.parse(mappingStr); } catch(e) { toast('模型映射 JSON 格式错误'); return; }
+  }
+  const body = {type:'custom', customUrl:url, customApiKey:key, models:models, modelMapping:modelMapping};
+  fetch(API + '/codex/accounts/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{
+    toast(r.success ? '供应商添加成功' : (r.error||'添加失败'));
+    if (r.success) {
+      _('codex-custom-url').value=''; _('codex-custom-apikey').value=''; _('codex-custom-mapping').value='';
+      _('codex-custom-models-box').innerHTML=''; _('codex-custom-models-box').style.display='none';
+      _('codex-custom-models-status').textContent='';
+      loadCodexAccounts();
+    }
+  });
+}
+// 编辑供应商: 弹窗
+let codexEditIndex = -1;
+function editCodexCustomAccount(idx) {
+  fetch(API + '/codex/accounts').then(r=>r.json()).then(r=>{
+    if (!r.success) return;
+    const acc = (r.data||[]).find(a => a.index === idx);
+    if (!acc) return;
+    codexEditIndex = idx;
+    _('codex-edit-url').value = acc.customUrl || '';
+    _('codex-edit-apikey').value = '';
+    _('codex-edit-mapping').value = acc.modelMapping ? JSON.stringify(acc.modelMapping, null, 2) : '';
+    _('codex-edit-models-status').textContent = '';
+    // 渲染已启用的模型 (已勾选)
+    renderCodexModelCheckboxes('codex-edit-models-box', acc.models || [], acc.models || []);
+    _('codex-edit-modal').style.display = 'flex';
+  });
+}
+function closeCodexEditModal() {
+  _('codex-edit-modal').style.display = 'none';
+  codexEditIndex = -1;
+}
+function fetchCodexModelsForEdit() {
+  const url = _('codex-edit-url').value.trim();
+  const key = _('codex-edit-apikey').value.trim();
+  if (!url) { toast('请输入 Base URL'); return; }
+  const status = _('codex-edit-models-status');
+  const prevSelected = getCheckedModels('codex-edit-models-box');
+  status.textContent = '获取中...';
+  // key 为空时传 index, 后端用存储的 key
+  const payload = {url:url};
+  if (key) { payload.apiKey = key; } else { payload.index = codexEditIndex; }
+  fetch(API + '/codex/models/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}).then(r=>r.json()).then(r=>{
+    if (r.success) {
+      const models = r.data.models || [];
+      status.textContent = '获取到 ' + models.length + ' 个模型';
+      renderCodexModelCheckboxes('codex-edit-models-box', models, prevSelected);
+    } else {
+      status.textContent = '';
+      toast(r.error || '获取失败');
+    }
+  }).catch(e => { status.textContent = ''; toast('网络错误'); });
+}
+function saveCodexCustomEdit() {
+  if (codexEditIndex < 0) return;
+  const url = _('codex-edit-url').value.trim();
+  const key = _('codex-edit-apikey').value.trim();
+  const mappingStr = _('codex-edit-mapping').value.trim();
+  if (!url) { toast('Base URL 不能为空'); return; }
+  const models = getCheckedModels('codex-edit-models-box');
+  let modelMapping = {};
+  if (mappingStr.trim()) {
+    try { modelMapping = JSON.parse(mappingStr); } catch(e) { toast('模型映射 JSON 格式错误'); return; }
+  }
+  const body = {index:codexEditIndex, customUrl:url, models:models, modelMapping:modelMapping};
+  if (key) body.customApiKey = key;
+  fetch(API + '/codex/accounts/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{
+    toast(r.success ? '供应商已更新' : (r.error||'更新失败'));
+    if (r.success) { closeCodexEditModal(); loadCodexAccounts(); }
+  });
+}
+function deleteCodexAccount(idx) {
+  if (!confirm('确认删除此账号？')) return;
+  fetch(API + '/codex/accounts/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({index:idx})}).then(r=>r.json()).then(r=>{
+    toast(r.success ? '已删除' : (r.error||'删除失败'));
+    if (r.success) loadCodexAccounts();
+  });
+}
+function refreshCodexAccount(idx) {
+  fetch(API + '/codex/accounts/refresh', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({index:idx})}).then(r=>r.json()).then(r=>{
+    toast(r.success ? 'Token 已刷新' : (r.error||'刷新失败'));
+    if (r.success) loadCodexAccounts();
+  });
+}
+
 // ========== 初始化 ==========
 loadStats();
 loadAccounts();
 loadKeys();
 loadModels();
 loadConfig();
+loadClinePassConfig();
+loadClinePassAccounts();
+loadClinePassModels();
+loadCodexConfig();
+loadCodexAccounts();
 setInterval(() => { loadStats(); }, 10000);
 setInterval(() => { loadOcStats(); }, 15000);
 setInterval(() => { if (_('tab-logs').style.display !== 'none') loadLogs(); }, 8000);
+setInterval(() => { if (_('tab-clinepass').style.display !== 'none') loadClinePassModels(); }, 15000);
+setInterval(() => { if (_('tab-codex').style.display !== 'none') loadCodexAccounts(); }, 15000);
 </script>
 </body>
 </html>`

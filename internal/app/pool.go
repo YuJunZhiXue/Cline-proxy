@@ -65,6 +65,9 @@ func setDefaultModel(modelID string) {
 	_, ok := modelsCache[modelID]
 	modelsMu.Unlock()
 	if !ok {
+		ok = clinePassHasModel(modelID)
+	}
+	if !ok {
 		return
 	}
 	defaultModel = modelID
@@ -246,7 +249,7 @@ func ListAccounts() []*Account {
 			TokensDate:      a.TokensDate,
 			CreatedAt:       a.CreatedAt,
 			CooldownUntil:   a.CooldownUntil,
-			LastReason:     a.LastReason,
+			LastReason:      a.LastReason,
 		}
 	}
 	savePoolLocked()

@@ -33,6 +33,11 @@ func responsesToChat(body map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+	for _, k := range []string{"provider", "providerOptions"} {
+		if v, ok := body[k]; ok {
+			out[k] = v
+		}
+	}
 	if instr, ok := body["instructions"].(string); ok && instr != "" {
 		out["messages"] = append([]any{map[string]any{"role": "system", "content": instr}}, responsesInputToMessages(body["input"])...)
 	} else {
@@ -155,12 +160,12 @@ func responsesToolsToChat(tools []any) []any {
 // chatToResponses chat.completions 响应 -> Responses 响应
 func chatToResponses(chat map[string]any) map[string]any {
 	resp := map[string]any{
-		"id":         "resp_" + fmt.Sprintf("%x", time.Now().UnixMilli()),
-		"object":     "response",
-		"created_at": time.Now().Unix(),
-		"status":     "completed",
-		"model":      chat["model"],
-		"output":     []any{},
+		"id":          "resp_" + fmt.Sprintf("%x", time.Now().UnixMilli()),
+		"object":      "response",
+		"created_at":  time.Now().Unix(),
+		"status":      "completed",
+		"model":       chat["model"],
+		"output":      []any{},
 		"output_text": "",
 	}
 	choices, _ := chat["choices"].([]any)
@@ -178,11 +183,11 @@ func chatToResponses(chat map[string]any) map[string]any {
 				content = append(content, map[string]any{"type": "output_text", "text": c, "annotations": []any{}})
 			}
 			msgOut := map[string]any{
-				"type":      "message",
-				"id":        "msg_" + fmt.Sprintf("%x", time.Now().UnixMilli()),
-				"status":    "completed",
-				"role":      "assistant",
-				"content":   content,
+				"type":        "message",
+				"id":          "msg_" + fmt.Sprintf("%x", time.Now().UnixMilli()),
+				"status":      "completed",
+				"role":        "assistant",
+				"content":     content,
 				"output_text": outputText.String(),
 			}
 			outputs = append(outputs, msgOut)
@@ -262,6 +267,10 @@ func (s *responsesSSEWriter) event(event string, data any) {
 
 // chatStreamToResponses 将上游 chat.completions SSE 流转换为 Responses SSE 流
 func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, onUsage func(map[string]any)) {
+	chatStreamToResponsesWithMeta(w, upstream, onUsage, nil)
+}
+
+func chatStreamToResponsesWithMeta(w http.ResponseWriter, upstream *http.Response, onUsage func(map[string]any), onPayload func(map[string]any)) {
 	model := ""
 	// 开场
 	s := newResponsesSSE(w)
@@ -303,6 +312,9 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, onUsa
 						obj = d
 					}
 				}
+				if onPayload != nil {
+					onPayload(obj)
+				}
 				if m, ok := obj["model"].(string); ok && m != "" {
 					model = m
 				}
@@ -328,35 +340,35 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, onUsa
 					if !textEmitted {
 						textEmitted = true
 						s.event("response.output_item.added", map[string]any{
-							"type":       "response.output_item.added",
+							"type":         "response.output_item.added",
 							"output_index": 0,
-							"item": map[string]any{"id": s.msgID, "type": "message", "role": "assistant", "status": "in_progress", "content": []any{}},
+							"item":         map[string]any{"id": s.msgID, "type": "message", "role": "assistant", "status": "in_progress", "content": []any{}},
 						})
 						s.event("response.content_part.added", map[string]any{
-							"type": "response.content_part.added",
-							"item_id": s.msgID,
-							"output_index": 0,
+							"type":          "response.content_part.added",
+							"item_id":       s.msgID,
+							"output_index":  0,
 							"content_index": 0,
-							"part": map[string]any{"type": "output_text", "text": "", "annotations": []any{}},
+							"part":          map[string]any{"type": "output_text", "text": "", "annotations": []any{}},
 						})
 					}
 					outText.WriteString(c)
 					s.event("response.output_text.delta", map[string]any{
-						"type": "response.output_text.delta",
-						"item_id": s.msgID,
-						"output_index": 0,
+						"type":          "response.output_text.delta",
+						"item_id":       s.msgID,
+						"output_index":  0,
 						"content_index": 0,
-						"delta": c,
+						"delta":         c,
 					})
 				}
 				// 推理
 				if r, ok := delta["reasoning_content"].(string); ok && r != "" {
 					s.event("response.reasoning_summary_text.delta", map[string]any{
-						"type": "response.reasoning_summary_text.delta",
-						"item_id": s.msgID,
-						"output_index": 0,
+						"type":          "response.reasoning_summary_text.delta",
+						"item_id":       s.msgID,
+						"output_index":  0,
 						"content_index": 0,
-						"delta": r,
+						"delta":         r,
 					})
 				}
 				// 工具调用
@@ -381,15 +393,15 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, onUsa
 						if !callEmitted && curCallName != "" {
 							callEmitted = true
 							s.event("response.output_item.added", map[string]any{
-								"type": "response.output_item.added",
+								"type":         "response.output_item.added",
 								"output_index": 1,
 								"item": map[string]any{
-									"type": "function_call",
-									"id":   "fc_" + curCallName,
-									"call_id": curCallID,
-									"name": curCallName,
+									"type":      "function_call",
+									"id":        "fc_" + curCallName,
+									"call_id":   curCallID,
+									"name":      curCallName,
 									"arguments": "",
-									"status": "in_progress",
+									"status":    "in_progress",
 								},
 							})
 						}
@@ -450,6 +462,11 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 
 	chat := responsesToChat(params)
 	chatModel, _ := chat["model"].(string)
+	if strings.TrimSpace(chatModel) == "" {
+		chatModel = getDefaultModel()
+		chat["model"] = chatModel
+		params["model"] = chatModel
+	}
 	route := routeModel(chatModel)
 	if route == "reject" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -493,6 +510,16 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, chatToResponses(raw))
+		return
+	}
+
+	// codex 上游: Responses API 格式直接透传
+	if route == "codex" {
+		handleCodexResponses(w, params, isStream)
+		return
+	}
+	if route == "clinepass" {
+		handleClinePassResponses(w, r, params, isStream)
 		return
 	}
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -16,15 +17,22 @@ import (
 
 // RequestLog 单条代理请求记录（对话/API 调用历史）
 type RequestLog struct {
-	Time     time.Time `json:"time"`
-	Client   string    `json:"client"`
-	Method   string    `json:"method"`
-	Path     string    `json:"path"`
-	Model    string    `json:"model,omitempty"`
-	Route    string    `json:"route"` // zen | cline | admin | other
-	Status   int       `json:"status"`
-	Duration int64     `json:"duration_ms"`
-	Note     string    `json:"note,omitempty"`
+	Time               time.Time          `json:"time"`
+	Client             string             `json:"client"`
+	Method             string             `json:"method"`
+	Path               string             `json:"path"`
+	Model              string             `json:"model,omitempty"`
+	Route              string             `json:"route"` // zen | cline | clinepass | admin | other
+	Upstream           string             `json:"upstream,omitempty"`
+	Pipeline           string             `json:"pipeline,omitempty"`
+	RoutingMode        string             `json:"routingMode,omitempty"`
+	RequestedProviders []string           `json:"requestedProviders,omitempty"`
+	ActualProvider     string             `json:"actualProvider,omitempty"`
+	ActualModel        string             `json:"actualModel,omitempty"`
+	Attempts           []ClinePassAttempt `json:"attempts,omitempty"`
+	Status             int                `json:"status"`
+	Duration           int64              `json:"duration_ms"`
+	Note               string             `json:"note,omitempty"`
 }
 
 const (
@@ -36,6 +44,25 @@ var (
 	reqLogsMu sync.Mutex
 	reqLogs   []RequestLog
 )
+
+type requestLogContext struct {
+	clinePass *ClinePassRequestMeta
+}
+
+type requestLogContextKey struct{}
+
+func setRequestLogClinePass(r *http.Request, meta *ClinePassRequestMeta) {
+	if r == nil || meta == nil {
+		return
+	}
+	ctx, _ := r.Context().Value(requestLogContextKey{}).(*requestLogContext)
+	if ctx != nil {
+		cp := *meta
+		cp.RequestedProviders = append([]string(nil), meta.RequestedProviders...)
+		cp.Attempts = append([]ClinePassAttempt(nil), meta.Attempts...)
+		ctx.clinePass = &cp
+	}
+}
 
 var reqLogsFile = kit.ResolveDataPath("requests.jsonl")
 
@@ -123,11 +150,21 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// Flush 透传到底层 ResponseWriter，实现 http.Flusher，
+// 使流式（SSE）响应能够正常刷新，避免触发 "streaming not supported for client"。
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // requestLogMiddleware 记录所有进入代理的请求（API 调用与对话历史）。
 func requestLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
+		logCtx := &requestLogContext{}
+		r = r.WithContext(context.WithValue(r.Context(), requestLogContextKey{}, logCtx))
 
 		// 读取请求体提取模型，并放回，避免影响后续处理
 		model := ""
@@ -151,6 +188,8 @@ func requestLogMiddleware(next http.Handler) http.Handler {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/admin"):
 			route = "admin"
+		case logCtx.clinePass != nil:
+			route = "clinepass"
 		case strings.HasPrefix(model, "zen/"):
 			route = "zen"
 		case model != "":
@@ -162,7 +201,7 @@ func requestLogMiddleware(next http.Handler) http.Handler {
 		if host, _, err := net.SplitHostPort(client); err == nil {
 			client = host
 		}
-		AppendReqLog(RequestLog{
+		entry := RequestLog{
 			Time:     time.Now(),
 			Client:   client,
 			Method:   r.Method,
@@ -171,6 +210,17 @@ func requestLogMiddleware(next http.Handler) http.Handler {
 			Route:    route,
 			Status:   sw.status,
 			Duration: time.Since(start).Milliseconds(),
-		})
+		}
+		if logCtx.clinePass != nil {
+			meta := logCtx.clinePass
+			entry.Upstream = meta.Upstream
+			entry.Pipeline = meta.Pipeline
+			entry.RoutingMode = meta.RoutingMode
+			entry.RequestedProviders = append([]string(nil), meta.RequestedProviders...)
+			entry.ActualProvider = meta.ActualProvider
+			entry.ActualModel = meta.ActualModel
+			entry.Attempts = append([]ClinePassAttempt(nil), meta.Attempts...)
+		}
+		AppendReqLog(entry)
 	})
 }

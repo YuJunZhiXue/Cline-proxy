@@ -14,6 +14,7 @@ cline-proxy-*
 .cline-accounts.json
 .cline-credentials.json
 .zen-config.json
+.clinepass-config.json
 zen-stats.jsonl
 cline-proxy.log
 cline-proxy-stream.log
