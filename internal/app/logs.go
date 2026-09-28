@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -121,6 +123,45 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 		w.status = http.StatusOK
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+// Flush 转发到底层实现，否则 statusWriter 因嵌入的是 http.ResponseWriter 接口
+// （不含 Flush 方法）而无法被类型断言为 http.Flusher，导致所有 SSE 流式响应
+// 在 w.(http.Flusher) 断言处失败、打印 "streaming not supported for client" 后空响应挂起。
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijacker / Pusher / CloseNotifier / ReaderFrom 同样需要透传，
+// 避免日志中间件包装后丢失底层响应能力。
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+func (w *statusWriter) Push(target string, opts *http.PushOptions) error {
+	if p, ok := w.ResponseWriter.(http.Pusher); ok {
+		return p.Push(target, opts)
+	}
+	return http.ErrNotSupported
+}
+
+func (w *statusWriter) CloseNotify() <-chan bool {
+	if c, ok := w.ResponseWriter.(http.CloseNotifier); ok {
+		return c.CloseNotify()
+	}
+	return make(chan bool)
+}
+
+func (w *statusWriter) ReadFrom(src io.Reader) (int64, error) {
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(src)
+	}
+	return 0, fmt.Errorf("statusWriter: underlying writer does not implement io.ReaderFrom")
 }
 
 // requestLogMiddleware 记录所有进入代理的请求（API 调用与对话历史）。
