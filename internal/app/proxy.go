@@ -436,17 +436,138 @@ func handleZenChat(w http.ResponseWriter, r *http.Request, params map[string]any
 	tracker.finish(true, resp.StatusCode)
 }
 
+// cleanMessages 在把历史转发给上游之前，剔除 function.name 为空的 tool_call，
+// 并连带剔除其 role=tool 结果：调用消失后结果即孤儿，上游同样会判配对断裂。
+//
+// 空 name 的来源：上游流式响应在工具调用的 name 分片到达前就异常结束（200 空流
+// 也算这种结束），聚合器按占位符建了 name:"" 的条目返回给客户端，客户端把它写进
+// 会话历史；下一轮原样转发，严格校验的上游直接以
+//
+//	400: tool_calls[0].function.name must be a non-empty string
+//
+// 拒绝整个请求，此后该会话每一轮都失败，直到手动清空历史。
+//
+// assistant 消息本身一律保留：它可能还带着正常 content；即使为空也不整条删除，
+// 避免把消息序列压成相邻同 role 触发另一类校验失败。
+//
+// 无脏条目时原样返回入参 slice：健康流量零拷贝、零改动。需要改动时对受影响
+// 的消息做浅拷贝，不污染调用方传入的原始 map（同一份 params 可能被重试路径复用）。
 func cleanMessages(messages []any) []any {
-	cleaned := make([]any, 0, len(messages))
+	dropped := map[string]bool{}
 	for _, m := range messages {
 		msg, ok := m.(map[string]any)
 		if !ok {
-			cleaned = append(cleaned, m)
 			continue
 		}
-		cleaned = append(cleaned, msg)
+		if role, _ := msg["role"].(string); role != "assistant" {
+			continue
+		}
+		tcs, ok := msg["tool_calls"].([]any)
+		if !ok {
+			continue
+		}
+		for _, one := range tcs {
+			tc, ok := one.(map[string]any)
+			if !ok {
+				continue
+			}
+			if toolCallNameOK(tc) {
+				continue
+			}
+			if id, ok := tc["id"].(string); ok && id != "" {
+				dropped[id] = true
+			}
+		}
 	}
-	return cleaned
+	if len(dropped) == 0 {
+		return messages
+	}
+	log.Printf("  clean: drop %d tool_call(s) with empty function.name", len(dropped))
+
+	out := make([]any, 0, len(messages))
+	for _, m := range messages {
+		msg, ok := m.(map[string]any)
+		if !ok {
+			out = append(out, m)
+			continue
+		}
+		switch msg["role"] {
+		case "assistant":
+			tcs, ok := msg["tool_calls"].([]any)
+			if !ok || !containsDroppedCall(tcs, dropped) {
+				break
+			}
+			cp := make(map[string]any, len(msg))
+			for k, v := range msg {
+				cp[k] = v
+			}
+			kept := make([]any, 0, len(tcs))
+			for _, one := range tcs {
+				tc, ok := one.(map[string]any)
+				if !ok {
+					continue
+				}
+				if id, _ := tc["id"].(string); dropped[id] {
+					continue
+				}
+				kept = append(kept, tc)
+			}
+			if len(kept) > 0 {
+				cp["tool_calls"] = kept
+			} else {
+				delete(cp, "tool_calls")
+			}
+			out = append(out, cp)
+			continue
+		case "tool":
+			if id, _ := msg["tool_call_id"].(string); dropped[id] {
+				continue
+			}
+		}
+		out = append(out, msg)
+	}
+	return out
+}
+
+// containsDroppedCall 判断这批 tool_calls 中是否有 id 命中 dropped 的条目。
+func containsDroppedCall(tcs []any, dropped map[string]bool) bool {
+	for _, one := range tcs {
+		tc, ok := one.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, _ := tc["id"].(string); dropped[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// toolCallNameOK 判断单条 tool_call 是否携带可用的 function.name：
+// 缺 function 对象、name 非字符串、纯空白都算不可用。
+func toolCallNameOK(tc map[string]any) bool {
+	fn, ok := tc["function"].(map[string]any)
+	if !ok {
+		return false
+	}
+	name, ok := fn["name"].(string)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(name) != ""
+}
+
+// appendToolCall 是聚合器写出单条 tool_call 前的最后一道闸：name 为空说明上游流在
+// name 分片到达前就结束了，属占位残片，整条丢弃并记日志，不再交给客户端、也就不会被
+// 写进会话历史。arguments 为空不在丢弃之列：无参工具的 arguments 本就是空串，合法。
+func appendToolCall(toolCalls []any, tc map[string]any) []any {
+	if toolCallNameOK(tc) {
+		return append(toolCalls, tc)
+	}
+	fn, _ := tc["function"].(map[string]any)
+	args, _ := fn["arguments"].(string)
+	log.Printf("  aggregate: drop tool_call with empty name (id=%v args_len=%d) — upstream stream ended before name arrived", tc["id"], len(args))
+	return toolCalls
 }
 
 func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
@@ -831,7 +952,7 @@ func collectStreamResponse(upstream *http.Response) (map[string]any, error) {
 					if idx != toolCallIdx {
 						if curToolCall != nil {
 							curToolCall["function"].(map[string]any)["arguments"] = curArgs.String()
-							toolCalls = append(toolCalls, curToolCall)
+							toolCalls = appendToolCall(toolCalls, curToolCall)
 						}
 						curToolCall = map[string]any{
 							"id":       tcMap["id"],
@@ -858,7 +979,7 @@ func collectStreamResponse(upstream *http.Response) (map[string]any, error) {
 	}
 	if curToolCall != nil {
 		curToolCall["function"].(map[string]any)["arguments"] = curArgs.String()
-		toolCalls = append(toolCalls, curToolCall)
+		toolCalls = appendToolCall(toolCalls, curToolCall)
 	}
 
 	message := map[string]any{
